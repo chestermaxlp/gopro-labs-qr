@@ -1,0 +1,986 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Labs QR-пульт</title>
+<meta name="description" content="Сборщик и расшифровщик QR-кодов GoPro Labs: несколько функций в одном коде, журнал включённого, свои наборы.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Labs QR">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#EEF2F7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0A0E14" media="(prefers-color-scheme: dark)">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: single phone-first column, sticky top bar, fixed bottom tab bar, a "cart" bar above it in the builder, full-screen QR sheet. */
+:root{
+  --bg:#EEF2F7; --surface:#FFFFFF; --surface2:#F6F8FB; --ink:#0D1420; --muted:#5B6779; --line:#D9E0EA;
+  --accent:#0B63F6; --accent-ink:#FFFFFF; --accent-soft:#E3ECFE;
+  --on:#0F9B4C; --on-soft:#DDF4E7; --off:#D23B2F; --off-soft:#FBE3E1;
+  --act:#B76E00; --act-soft:#FBEBD2; --set:#0B63F6; --set-soft:#E3ECFE;
+  --unk:#6B7385; --unk-soft:#E9ECF1;
+  --f-ui:"Onest", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --f-mono:"JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --r:14px;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0A0E14; --surface:#131A24; --surface2:#18212D; --ink:#E7ECF3; --muted:#8F9BAE; --line:#253042;
+  --accent:#4D8DFF; --accent-ink:#06101F; --accent-soft:#16264A;
+  --on:#3FD283; --on-soft:#123222; --off:#FF6E62; --off-soft:#3A1916;
+  --act:#F2A93B; --act-soft:#3A2A10; --set:#4D8DFF; --set-soft:#16264A;
+  --unk:#9AA3B5; --unk-soft:#212A38; color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#0A0E14; --surface:#131A24; --surface2:#18212D; --ink:#E7ECF3; --muted:#8F9BAE; --line:#253042;
+  --accent:#4D8DFF; --accent-ink:#06101F; --accent-soft:#16264A;
+  --on:#3FD283; --on-soft:#123222; --off:#FF6E62; --off-soft:#3A1916;
+  --act:#F2A93B; --act-soft:#3A2A10; --set:#4D8DFF; --set-soft:#16264A;
+  --unk:#9AA3B5; --unk-soft:#212A38; color-scheme:dark;
+}
+*{box-sizing:border-box}
+:root{padding-top:env(safe-area-inset-top, 0px)}
+html{-webkit-text-size-adjust:100%}
+[hidden]{display:none!important}
+img{max-width:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-ui);font-size:15px;line-height:1.45;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));
+  padding-block:0 calc(150px + env(safe-area-inset-bottom, 0px));-webkit-tap-highlight-color:transparent}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top, 0px);z-index:10;background:var(--bg)}
+.wrap{max-width:720px;margin:0 auto}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--f-mono)}
+h1,h2,h3{text-wrap:balance;margin:0}
+
+header.top{position:sticky;top:env(safe-area-inset-top, 0px);z-index:5;background:var(--bg);padding-block:14px 10px;display:flex;align-items:center;gap:12px}
+.logo{width:36px;height:36px;border-radius:10px;background:var(--ink);display:grid;place-items:center;flex:none}
+.logo svg{width:22px;height:22px}
+header .t{min-width:0;flex:1}
+header h1{font-size:19px;font-weight:700;letter-spacing:-.01em}
+header .sync{font-size:12px;color:var(--muted)}
+
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--surface);border-top:1px solid var(--line);
+  padding:6px max(8px, env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px));
+  display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.tabs button{background:none;border:0;border-radius:10px;padding:6px 2px;display:flex;flex-direction:column;align-items:center;gap:2px;color:var(--muted);font-size:12px;font-weight:500}
+.tabs button svg{width:22px;height:22px}
+.tabs button[aria-selected="true"]{color:var(--accent);background:var(--accent-soft)}
+.tabs .badge{font-size:10px;background:var(--on);color:var(--surface);border-radius:8px;padding:0 5px;margin-left:2px}
+
+section.view{display:flex;flex-direction:column;gap:14px}
+.lead{color:var(--muted);font-size:14px;margin:0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:10px}
+.panel h2{font-size:16px;font-weight:600}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.label{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:11px;padding:10px 14px;font-weight:600;font-size:14px;display:inline-flex;align-items:center;gap:6px;justify-content:center}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.danger{color:var(--off);border-color:var(--off)}
+.btn.ghost{background:transparent}
+.btn.sm{padding:6px 10px;font-size:13px;border-radius:9px}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.block{width:100%}
+
+.seg{display:inline-grid;grid-auto-flow:column;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:2px;gap:2px}
+.seg button{border:0;background:none;border-radius:8px;padding:6px 11px;font-size:13px;font-weight:600;color:var(--muted)}
+.seg button[aria-pressed="true"].n{background:var(--surface);color:var(--ink);box-shadow:0 0 0 1px var(--line)}
+.seg button[aria-pressed="true"].on{background:var(--on);color:var(--surface)}
+.seg button[aria-pressed="true"].off{background:var(--off);color:var(--surface)}
+.seg button[aria-pressed="true"].p{background:var(--accent);color:var(--accent-ink)}
+
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font-size:13px;font-weight:500}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.catbar{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+.catbar::-webkit-scrollbar{display:none}
+.catbar .chip{white-space:nowrap;flex:none}
+
+.search{width:100%;border:1px solid var(--line);background:var(--surface);border-radius:11px;padding:11px 12px}
+
+.recipes{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.recipe{border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:10px 12px;text-align:left;display:flex;flex-direction:column;gap:2px}
+.recipe b{font-size:14px;font-weight:600}
+.recipe span{font-size:12px;color:var(--muted)}
+
+.opt{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.opt.is-on{border-color:var(--on);box-shadow:inset 3px 0 0 var(--on)}
+.opt.is-off{border-color:var(--off);box-shadow:inset 3px 0 0 var(--off)}
+.opt.is-set{border-color:var(--set);box-shadow:inset 3px 0 0 var(--set)}
+.opt-h{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+.opt-h .tt{min-width:0;flex:1 1 180px}
+.opt h3{font-size:15px;font-weight:600}
+.opt .code{font-family:var(--f-mono);font-size:11px;color:var(--muted)}
+.opt p{margin:0;font-size:13px;color:var(--muted);max-width:62ch}
+.opt .warn{font-size:12.5px;color:var(--act);background:var(--act-soft);border-radius:8px;padding:6px 9px}
+.opt .val{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.opt input[type=number],.opt input[type=text],.opt select{border:1px solid var(--line);background:var(--surface2);border-radius:9px;padding:7px 9px;min-width:0}
+.opt input[type=number]{width:100px}
+.opt input[type=text]{flex:1 1 160px}
+.opt input[type=range]{flex:1 1 140px;accent-color:var(--accent)}
+.unit{font-size:13px;color:var(--muted)}
+.cat-h{font-size:12px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-top:6px}
+
+.cart{position:fixed;left:0;right:0;bottom:calc(64px + env(safe-area-inset-bottom, 0px));z-index:15;
+  padding:0 max(12px, env(safe-area-inset-right, 0px)) 8px max(12px, env(safe-area-inset-left, 0px));pointer-events:none}
+.cart-in{max-width:720px;margin:0 auto;background:var(--ink);color:var(--bg);border-radius:16px;padding:10px 10px 10px 16px;display:flex;align-items:center;gap:10px;pointer-events:auto;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+.cart-in .info{flex:1;min-width:0;font-size:13px}
+.cart-in .info b{font-size:15px;display:block}
+.cart-in .info span{opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.cart-in .btn{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.cart-in .clear{background:transparent;border:0;color:var(--bg);opacity:.7;font-size:13px;padding:6px}
+
+/* Decoded line list */
+.lines{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.lines li{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border-radius:10px;background:var(--surface2)}
+.tag{flex:none;font-size:10.5px;font-weight:700;letter-spacing:.05em;border-radius:6px;padding:2px 6px;margin-top:2px;min-width:52px;text-align:center}
+.tag.on{background:var(--on-soft);color:var(--on)}
+.tag.off{background:var(--off-soft);color:var(--off)}
+.tag.set{background:var(--set-soft);color:var(--set)}
+.tag.act{background:var(--act-soft);color:var(--act)}
+.tag.unk{background:var(--unk-soft);color:var(--unk)}
+.lines .txt{min-width:0;flex:1}
+.lines .txt b{font-weight:600}
+.lines .txt small{display:block;color:var(--muted);font-size:12px}
+.lines .raw{font-family:var(--f-mono);font-size:11.5px;color:var(--muted);word-break:break-all}
+
+.codebox{font-family:var(--f-mono);font-size:12.5px;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:10px;word-break:break-all;user-select:all}
+textarea.codein{width:100%;min-height:90px;font-family:var(--f-mono);font-size:13px;background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:10px;resize:vertical}
+
+.empty{color:var(--muted);font-size:14px;text-align:center;padding:18px 8px;border:1px dashed var(--line);border-radius:var(--r)}
+.note{font-size:12.5px;color:var(--muted)}
+.pill{font-size:11px;font-weight:600;border-radius:999px;padding:2px 8px;background:var(--unk-soft);color:var(--unk);white-space:nowrap}
+.pill.temp{background:var(--act-soft);color:var(--act)}
+.pill.perm{background:var(--on-soft);color:var(--on)}
+
+.item{display:flex;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.item:first-of-type{border-top:0}
+.item .grow{flex:1;min-width:0}
+.item .grow b{font-weight:600}
+.item .grow small{display:block;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item input[type=checkbox]{width:20px;height:20px;accent-color:var(--off);flex:none}
+
+/* QR sheet */
+.sheet{position:fixed;inset:0;z-index:50;background:var(--bg);overflow-y:auto;
+  padding:calc(12px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px))}
+.sheet-in{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.sheet-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.sheet-top h2{font-size:18px}
+.qrbox{background:#FFFFFF;border-radius:18px;padding:14px;align-self:center;width:min(88vw,440px);max-width:100%}
+.qrbox svg{display:block;width:100%;height:auto}
+.qrmeta{text-align:center;font-size:12px;color:var(--muted)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(140px + env(safe-area-inset-bottom, 0px));z-index:60;background:var(--ink);color:var(--bg);padding:9px 14px;border-radius:10px;font-size:14px;max-width:90vw}
+.confirm{background:var(--off-soft);border:1px solid var(--off);border-radius:12px;padding:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px}
+.steps{margin:0;padding-left:20px;font-size:13.5px;color:var(--muted);display:flex;flex-direction:column;gap:3px}
+@media (prefers-reduced-motion: no-preference){ .opt,.btn,.chip{transition:background-color .15s, border-color .15s, box-shadow .15s} }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <div class="logo" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1.5" stroke="#fff" stroke-width="2"/><rect x="14" y="3" width="7" height="7" rx="1.5" stroke="#fff" stroke-width="2"/><rect x="3" y="14" width="7" height="7" rx="1.5" stroke="#fff" stroke-width="2"/><path d="M14 14h3v3h-3zM18 18h3v3h-3zM18 14h3M14 18v3" stroke="#fff" stroke-width="2"/></svg>
+    </div>
+    <div class="t">
+      <h1>Labs QR-пульт</h1>
+      <div class="sync" id="syncState">HERO11 · прошивка GoPro Labs</div>
+    </div>
+  </header>
+
+  <!-- BUILD -->
+  <section class="view" id="v-build">
+    <p class="lead">Выберите, что включить или выключить. Всё выбранное соберётся в один QR-код — камера применит его за одно сканирование.</p>
+
+    <div class="panel">
+      <div class="row" style="justify-content:space-between">
+        <span class="label">Быстрые наборы</span>
+      </div>
+      <div class="recipes" id="recipes"></div>
+    </div>
+
+    <div class="panel">
+      <div class="row" style="justify-content:space-between;gap:10px">
+        <div style="min-width:0;flex:1 1 200px">
+          <b style="font-weight:600">Как долго помнить Labs-функции</b>
+          <div class="note">«Навсегда» — останутся после выключения камеры. «До выкл.» — сбросятся сами.</div>
+        </div>
+        <div class="seg" role="group" aria-label="Срок действия">
+          <button id="persistPerm" class="p" aria-pressed="true">Навсегда</button>
+          <button id="persistTemp" class="p" aria-pressed="false">До выкл.</button>
+        </div>
+      </div>
+    </div>
+
+    <input class="search" id="search" type="search" placeholder="Поиск: уровень, битрейт, звук, часы…" aria-label="Поиск по функциям">
+    <div class="catbar" id="catbar" role="toolbar" aria-label="Разделы"></div>
+    <div id="optList" style="display:flex;flex-direction:column;gap:10px"></div>
+  </section>
+
+  <!-- STATE -->
+  <section class="view" id="v-state" hidden>
+    <p class="lead">Камера сама не сообщает, что в ней включено. Здесь — то, что вы применили через этот пульт. Нажимайте «Я отсканировал» после каждого кода, и журнал будет точным.</p>
+    <div class="panel">
+      <h2>Проверить прямо на камере</h2>
+      <p class="note" style="margin:0">Код покажет на экране камеры все постоянно включённые Labs-функции на 15 секунд.</p>
+      <div class="row"><button class="btn" id="btnFeat">Показать QR «что включено»</button></div>
+    </div>
+    <div class="panel">
+      <div class="row" style="justify-content:space-between"><h2>Включено сейчас</h2><span class="note" id="onCount"></span></div>
+      <div id="onList"></div>
+      <div class="row" id="onActions"></div>
+    </div>
+    <div class="panel">
+      <h2>Последние настройки камеры</h2>
+      <div id="setList"></div>
+    </div>
+    <div class="panel">
+      <h2>Забыл, что включал раньше</h2>
+      <p class="note" style="margin:0">Код выключит все Labs-функции из каталога пульта, даже те, которых нет в журнале. Настройки съёмки не трогает.</p>
+      <div class="row"><button class="btn danger" id="btnAllOff">QR: выключить все Labs-функции</button></div>
+    </div>
+    <div class="panel">
+      <h2>История кодов</h2>
+      <div id="histList"></div>
+    </div>
+  </section>
+
+  <!-- SETS -->
+  <section class="view" id="v-sets" hidden>
+    <p class="lead">Свои наборы: «Подводная съёмка», «Влог», «Вернуть как было». Откройте нужный — и сразу сканируйте.</p>
+    <div id="setsList" style="display:flex;flex-direction:column;gap:10px"></div>
+    <div class="panel">
+      <h2>Резервная копия</h2>
+      <p class="note" style="margin:0">Наборы и журнал хранятся только на этом устройстве. Сохраните копию файлом в «Файлы», Google Drive или iCloud — с ней можно перенести всё на другой телефон или компьютер.</p>
+      <div id="backupBox" style="display:flex;flex-direction:column;gap:10px"></div>
+      <input type="file" id="importFile" accept=".json,application/json" hidden>
+    </div>
+  </section>
+
+  <!-- DECODE -->
+  <section class="view" id="v-decode" hidden>
+    <p class="lead">Непонятный QR-код из интернета или старый свой? Сфотографируйте его или вставьте текст — пульт объяснит каждую команду.</p>
+    <div class="panel">
+      <label class="btn primary block" for="qrFile">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" stroke="currentColor" stroke-width="2"/></svg>
+        Сфотографировать или выбрать картинку с QR
+      </label>
+      <input type="file" id="qrFile" accept="image/*" hidden>
+      <div class="note" id="scanMsg">Подойдёт скриншот, фото с экрана компьютера или из галереи.</div>
+      <span class="label">или вставьте текст кода</span>
+      <textarea class="codein" id="codeIn" placeholder="например: mVr4p60*BITR=150*LEVL=5oV0"></textarea>
+      <div class="row"><button class="btn" id="btnDecode">Расшифровать</button><button class="btn ghost" id="btnSample">Пример</button></div>
+    </div>
+    <div class="panel" id="decodeOut" hidden>
+      <h2>Что делает этот код</h2>
+      <ul class="lines" id="decodeLines"></ul>
+      <div class="row">
+        <button class="btn primary" id="decToQR">Показать QR</button>
+        <button class="btn" id="decToBuild">Открыть в сборщике</button>
+        <button class="btn" id="decApplied">Я это отсканировал</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="cart" id="cart" hidden>
+  <div class="cart-in">
+    <div class="info"><b id="cartCount">0 команд</b><span id="cartSummary"></span></div>
+    <button class="clear" id="cartClear">Сбросить</button>
+    <button class="btn" id="cartGo">Показать QR</button>
+  </div>
+</div>
+
+<nav class="tabs" role="tablist" aria-label="Разделы">
+  <button role="tab" data-tab="build" aria-selected="true"><svg viewBox="0 0 24 24" fill="none"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="16" cy="6" r="2" stroke="currentColor" stroke-width="2"/><circle cx="10" cy="12" r="2" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="18" r="2" stroke="currentColor" stroke-width="2"/></svg>Собрать</button>
+  <button role="tab" data-tab="state" aria-selected="false"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="7" width="18" height="12" rx="3" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="13" r="3" stroke="currentColor" stroke-width="2"/><path d="M8 7l1.5-3h5L16 7" stroke="currentColor" stroke-width="2"/></svg><span>Включено<span class="badge" id="tabBadge" hidden></span></span></button>
+  <button role="tab" data-tab="sets" aria-selected="false"><svg viewBox="0 0 24 24" fill="none"><path d="M6 3h12v18l-6-4-6 4z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>Наборы</button>
+  <button role="tab" data-tab="decode" aria-selected="false"><svg viewBox="0 0 24 24" fill="none"><path d="M4 8V5a1 1 0 011-1h3M16 4h3a1 1 0 011 1v3M20 16v3a1 1 0 01-1 1h-3M8 20H5a1 1 0 01-1-1v-3M4 12h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Расшифровать</button>
+</nav>
+
+<div class="sheet" id="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+  <div class="sheet-in">
+    <div class="sheet-top"><h2 id="sheetTitle">QR-код</h2><button class="btn sm" id="sheetClose">Закрыть</button></div>
+    <div class="qrbox" id="qrBox"></div>
+    <div class="qrmeta" id="qrMeta"></div>
+    <ol class="steps">
+      <li>Включите камеру, экран должен гореть.</li>
+      <li>Наведите камеру на экран телефона с 15–30 см. Яркость телефона — повыше.</li>
+      <li>Камера пискнет и покажет сообщение — код применён.</li>
+    </ol>
+    <div class="row">
+      <button class="btn primary" id="sheetApplied">Я отсканировал — записать в журнал</button>
+    </div>
+    <div class="panel">
+      <span class="label">Что сделает код</span>
+      <ul class="lines" id="sheetLines"></ul>
+    </div>
+    <div class="panel">
+      <span class="label">Текст кода</span>
+      <div class="codebox" id="sheetCode"></div>
+      <div class="row">
+        <button class="btn sm" id="sheetCopy">Скопировать текст</button>
+        <button class="btn sm" id="sheetEdit">Изменить в сборщике</button>
+      </div>
+    </div>
+    <div class="panel" id="savePanel">
+      <span class="label">Сохранить как набор</span>
+      <div class="row">
+        <input id="saveName" type="text" class="search" style="flex:1 1 180px" placeholder="Название, например «Влог»" maxlength="40">
+        <button class="btn" id="saveBtn">Сохранить</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="vendor/qrcode.min.js"></script>
+<script src="vendor/jsQR.js"></script>
+<script>
+(() => {
+'use strict';
+// ---------- Catalog ----------
+const CATS = [
+  ['shoot','Съёмка'],['help','Помощь на экране'],['quality','Качество видео'],
+  ['files','Файлы и карта'],['power','Питание и запуск'],['audio','Звук'],['camera','Камера'],['actions','Действия']
+];
+const OPTS = [];
+const E = (code, cat, title, desc, ctl, more={}) => OPTS.push({id:code, kind:'ext', code, cat, title, desc, ctl, ...more});
+const S = (id, cat, title, desc, opts, more={}) => OPTS.push({id, kind:'set', cat, title, desc, opts, ...more});
+const A = (id, title, desc, opts) => OPTS.push({id, kind:'act', cat:'actions', title, desc, opts});
+const tog = {t:'tog'};
+
+// Съёмка (настройки текущего пресета)
+S('mode','shoot','Режим','С чего камера начнёт.',[['mV','Видео'],['mP','Фото'],['mT','Таймлапс'],['mTW','TimeWarp'],['mNL','Ночной таймлапс'],['mPN','Ночное фото'],['mPB','Серия фото'],['mST','Звёздные следы'],['mLP','Световая живопись'],['mLT','Огни машин']]);
+S('res','shoot','Разрешение','Для видео.',[['r1080','1080p'],['r27','2.7K'],['r4','4K 16:9'],['r4T','4K 4:3'],['r4X','4K 8:7'],['r5','5.3K 16:9'],['r5X','5.3K 8:7']]);
+S('fps','shoot','Кадров в секунду','Если камера не умеет такую частоту в этом разрешении, команда пропускается.',[['p24','24'],['p25','25'],['p30','30'],['p50','50'],['p60','60'],['p100','100'],['p120','120'],['p200','200'],['p240','240']]);
+S('lens','shoot','Объектив (угол обзора)','',[['fW','Wide'],['fL','Linear'],['fH','Linear + горизонт'],['fS','SuperView'],['fV','HyperView']]);
+S('eis','shoot','Стабилизация HyperSmooth','',[['e0','Выкл'],['e1','Вкл'],['e2','Высокая'],['e3','Boost'],['e4','Авто']]);
+S('color','shoot','Цвет','«Плоский» удобен для цветокоррекции.',[['cG','Яркий'],['cN','Натуральный'],['cF','Плоский']]);
+S('bits','shoot','Глубина цвета','',[['d8','8 бит'],['d10','10 бит']]);
+S('bitrate','shoot','Битрейт (штатный)','Для битрейта выше штатного есть Labs-функция «Высокий битрейт».',[['b0','Стандартный'],['b1','Высокий']]);
+S('wb','shoot','Баланс белого','',[['wA','Авто'],['w32','3200K'],['w40','4000K'],['w55','5500K'],['w65','6500K'],['wN','Нативный']]);
+S('iso','shoot','ISO','Минимум и максимум ISO.',[['i1M1','100 строго'],['i4M1','100–400'],['i16M1','100–1600'],['i64M1','100–6400']]);
+S('ev','shoot','Экспокоррекция','',[['x-1','−1'],['x-.5','−0.5'],['x0','0'],['x.5','+0.5'],['x1','+1']]);
+S('sharp','shoot','Резкость','',[['sL','Низкая'],['sM','Средняя'],['sH','Высокая']]);
+S('hind','shoot','HindSight','Камера пишет несколько секунд до нажатия кнопки.',[['hS0','Выкл'],['hS1','15 с'],['hS2','30 с']]);
+
+// Помощь на экране
+E('LEVL','help','Уровень горизонта','Пузырьковый уровень на экране. Белый — криво, жёлтый — горизонт ровно, зелёный — ровно и по наклону.',{t:'num',min:1,max:9,def:5,unit:'размер 1–9'});
+E('HIST','help','Гистограмма','График яркости, чтобы не пересветить небо и не завалить тени.',{t:'num',min:1,max:11,def:1,unit:'вид 1–11'});
+E('EXPS','help','ISO и выдержка на экране','Показывает, какие ISO и выдержку камера выбрала прямо сейчас.',{t:'num',min:1,max:6,def:1,unit:'вид 1–6'});
+E('AUDS','help','Уровень звука, дБ','Показывает громкость звука на экране.',tog);
+E('GUID','help','Рамка кадрирования','Рисует рамку нужного формата. Удобно, если потом режете под Reels или кино.',{t:'sel',def:'0.5625',opts:[['0.5625','9:16 вертикаль'],['0.8','4:5'],['1.0','1:1'],['1.777','16:9'],['2.35','2.35 кино']]});
+E('FRNT','help','Сообщения Labs на переднем экране','Удобно, когда снимаете себя.',tog);
+E('FAST','help','Меньше сообщений при включении','Сокращает приветствие Labs при старте камеры.',tog);
+E('BYPS','help','Без всплывающих окон','Не показывает окна вроде «сбросьте дату».',tog);
+E('DSPL','help','Время показа сообщений Labs','Сколько секунд висят сообщения Labs.',{t:'num',min:1,max:9,def:3,unit:'с'});
+
+// Качество
+E('BITR','quality','Высокий битрейт','Битрейт HEVC выше штатного. На низкой частоте кадров можно ставить больше. Нужна быстрая карта.',{t:'num',min:2,max:200,def:120,unit:'Мбит/с',range:true});
+E('NR01','quality','Шумоподавление','100 — штатное. Меньше — больше зерна и деталей.',{t:'num',min:1,max:100,def:50,unit:'1–100',range:true});
+E('TONE','quality','Тональная обработка','Как камера сжимает свет и тени.',{t:'sel',def:'1',opts:[['1','Глобальная (GTM)'],['2','GTM + локальная'],['3','Без обработки']]},{warn:'«Без обработки» на HERO11 часто даёт недодержку.'});
+E('EVBS','quality','Общая поправка экспозиции','Добавляется к экспокоррекции любого пресета.',{t:'num',min:-4,max:4,step:0.5,def:-0.5,unit:'EV'});
+E('WIDE','quality','Широкий цветовой охват','Родная гамма сенсора вместо Rec.709. Для цветокоррекции.',tog,{adv:true});
+E('LOGB','quality','Лог-кривая','Плоская лог-картинка для грейдинга. Значение — основание лог-кривой.',{t:'txt',def:'400'},{adv:true});
+E('GCMP','quality','Отключить гиро-компенсацию экспозиции','Камера сможет ставить более длинную выдержку, но стабилизация станет слабее.',tog,{adv:true});
+E('24HZ','quality','Ровно 24.000 кадра','Вместо 23.976. Нужно для синхронизации с кинокамерами.',tog,{adv:true});
+E('WBLK','quality','Фиксировать баланс белого при старте записи','Для подводной съёмки: цвет не «гуляет».',tog);
+
+// Файлы
+E('64BT','files','Размер куска файла','HERO11 режет длинную запись на куски по 12 ГБ. Здесь можно сделать куски крупнее.',{t:'num',min:1000,max:64000,def:32000,unit:'МБ'},{perm:true,adv:true});
+E('DLRV','files','Без LRV-превью','Не записывать маленькие файлы-превью. Экономит место, но приложение GoPro покажет превью хуже.',tog);
+E('DAUD','files','Видео без звука','Не записывать звуковую дорожку.',tog);
+E('PRXY','files','Прокси для монтажа','Раскладывает файлы-превью так, чтобы монтажка подхватила их как прокси.',{t:'sel',def:'4',opts:[['1','Premiere'],['2','THM'],['3','Premiere + THM'],['4','DaVinci']]});
+E('BASE','files','Своё имя файлов','Префикс имени файла. В [ ] можно дату: [yy-mm-dd]. Только латиница, без пробелов.',{t:'txt',def:'CamA-[yy-mm-dd]'},{warn:'Приложение GoPro и облако не понимают переименованные файлы.'});
+E('IWFR','files','Чаще записывать на карту','Если камера внезапно выключится, файл легче восстановить.',tog);
+E('FSOS','files','Чинить обрезанные файлы','Камера проверяет карту и восстанавливает недописанные файлы.',tog);
+E('DBGL','files','Журнал QR-команд','Пишет лог в MISC/qrlog.txt на карте. Полезно, если код не срабатывает.',tog,{adv:true});
+E('ARCH','files','Архивный режим','Камера превращается в «одну кнопку»: один режим, меню скрыто. Для тех, кто даёт камеру другим.',tog,{perm:true,warn:'Выйти из режима можно только кодом выключения. Сохраните его заранее в «Наборы».'});
+
+// Питание
+E('WAKE','power','Включаться при подаче питания','Удобно для стационарной съёмки от USB.',{t:'sel',def:'2',opts:[['2','Всегда при подаче питания'],['1','Только если ждёт отложенный старт']]});
+E('TUSB','power','Доверять питанию USB','Не выключаться при работе от внешнего питания.',tog);
+E('QRDR','power','Сканировать QR во время записи','Можно менять настройки кодом, не останавливая запись.',tog);
+E('STDL','power','Задержка начала записи','Пауза перед стартом записи.',{t:'num',min:0,max:10000,def:2000,unit:'мс'},{adv:true});
+E('HSTO','power','Таймаут HindSight','Через сколько минут HindSight сам выключится.',{t:'num',min:5,max:1440,def:60,unit:'мин'},{adv:true});
+
+// Звук
+E('GAIN','audio','Усиление микрофона (Media Mod)','Поднимает уровень записи звука.',{t:'num',min:-12,max:40,def:12,unit:'дБ'});
+E('HDMI','audio','Вывод HDMI (Media Mod)','Что камера отдаёт на HDMI.',{t:'sel',def:'1',opts:[['1','Чистая картинка'],['2','Картинка + интерфейс'],['0','Галерея']]});
+
+// Камера (общие настройки)
+S('clock','camera','Синхронизировать часы с телефоном','Время и часовой пояс берутся с телефона в момент показа QR. Сканируйте сразу.',[['CLOCK','Синхронизировать']]);
+S('beep','camera','Громкость писка','',[['oV0','Без звука'],['oV3','30%'],['oV7','70%'],['oV9','Максимум']]);
+S('bright','camera','Яркость экрана','',[['oB3','30%'],['oB6','60%'],['oB9','100%']]);
+S('leds','camera','Индикаторы (LED)','',[['oD0','Все выкл'],['oD2','Только задние'],['oD4','Все вкл']]);
+S('front','camera','Передний экран','',[['oF0','Выкл'],['oFU','Только инфо'],['oFF','Полная картинка'],['oFM','Как задний']]);
+S('scr','camera','Автовыключение экрана','',[['oS0','Никогда'],['oS1','1 мин'],['oS3','3 мин']]);
+S('auto','camera','Автовыключение камеры','',[['oC0','Никогда'],['oC5','5 мин'],['oC15','15 мин'],['oC30','30 мин']]);
+S('gps','camera','GPS','',[['oG0','Выкл'],['oG1','Вкл']]);
+S('qc','camera','QuickCapture','Запись с выключенной камеры одной кнопкой.',[['oQ0','Выкл'],['oQ1','Вкл']]);
+S('wifi','camera','Wi-Fi','',[['oW0','Выкл'],['oW1','Вкл']]);
+S('lang','camera','Язык меню','',[['oL9','Русский'],['oL0','English']]);
+
+// Действия (идут в конце кода)
+A('start','Начать запись','После применения настроек.',[['!S','Сразу'],['!3S','Через 3 с'],['!10S','Через 10 с']]);
+A('stop','Остановить запись','Через сколько после начала.',[['!30E','30 с'],['!60E','1 мин'],['!300E','5 мин'],['!600E','10 мин']]);
+A('off','Выключить камеру','В самом конце.',[['!O','Сразу'],['!5O','Через 5 с']]);
+
+const BYID = Object.fromEntries(OPTS.map(o=>[o.id,o]));
+const EXT = Object.fromEntries(OPTS.filter(o=>o.kind==='ext').map(o=>[o.code,o]));
+const TOK = {}; OPTS.filter(o=>o.kind!=='ext').forEach(o=>o.opts.forEach(([t,l])=>{ TOK[t]={opt:o,label:l}; }));
+const EXTRA_NAMES = {FEAT:'Показать включённые Labs-функции',SPED:'Тест скорости карты',OWNR:'Имя владельца',JOIN:'Wi-Fi сеть (содержит пароль)',BOOT:'Скрипт при включении',LLTZ:'Координаты и часовой пояс',
+  BURN:'Наложение таймкода',BRNP:'Позиция наложения',BRNT:'Время показа наложения',BRNX:'Сдвиг наложения',CBAR:'Цветные полосы',LBAR:'Градиент яркости',LOGO:'Логотип поверх видео',MTRX:'Цветовая матрица',
+  HSTP:'Позиция гистограммы',GUIC:'Яркость рамок',EXPX:'Лимит выдержки',EXPN:'Лимит выдержки (ночь)',EXPQ:'Лимит выдержки',EXPT:'Макс. угол затвора',BITH:'Битрейт LRV',BITL:'Битрейт стрима',DAMP:'Плавность автоэкспозиции',
+  BERS:'Компенсация rolling shutter',HNDL:'Номер камеры',TCAL:'Калибровка таймкода',GRAB:'Снимки экрана Labs',FONT:'Старый шрифт',DSPC:'Фон сообщений',WG84:'Высота GPS по WGS84',MUTE:'Отключить каналы звука',SOLO:'Один канал звука',PRES:'Пресет',ENCR:'Шифрование',ARCH:'Архивный режим'};
+
+// ---------- Recipes ----------
+const RECIPES = [
+  {name:'Помощники на экране', sub:'уровень, гистограмма, ISO, звук', sel:{LEVL:{m:'on',v:5},HIST:{m:'on',v:1},EXPS:{m:'on',v:1},AUDS:{m:'on',v:'1'}}},
+  {name:'Максимум качества', sub:'5.3K, 10 бит, 200 Мбит/с, плоский', sel:{res:'r5',bits:'d10',color:'cF',bitrate:'b1',BITR:{m:'on',v:200},NR01:{m:'on',v:50}}},
+  {name:'Влог на себя', sub:'передний экран, 4K60, тихо', sel:{mode:'mV',res:'r4',fps:'p60',lens:'fL',front:'oFF',FRNT:{m:'on',v:'1'},beep:'oV3'}},
+  {name:'Тихий режим', sub:'без писка и огоньков', sel:{beep:'oV0',leds:'oD0'}},
+  {name:'Синхронизировать часы', sub:'время с телефона', sel:{clock:'CLOCK'}},
+  {name:'Выключить помощники', sub:'уровень, гистограмма, ISO, звук', sel:{LEVL:{m:'off'},HIST:{m:'off'},EXPS:{m:'off'},AUDS:{m:'off'}}},
+];
+
+// ---------- Helpers ----------
+const $ = s => document.querySelector(s);
+function h(tag, attrs={}, ...kids){
+  const el = document.createElement(tag);
+  for (const [k,v] of Object.entries(attrs||{})){
+    if (v==null || v===false) continue;
+    if (k==='class') el.className=v; else if (k==='text') el.textContent=v;
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+    else el.setAttribute(k, v===true?'':v);
+  }
+  for (const kid of kids.flat()){ if (kid==null||kid===false) continue; el.append(kid.nodeType?kid:document.createTextNode(String(kid))); }
+  return el;
+}
+function toast(msg){ const t=h('div',{class:'toast',role:'status',text:msg}); document.body.append(t); setTimeout(()=>t.remove(),2200); }
+const plural = (n, a, b, c) => { const m10=n%10, m100=n%100; return n+' '+(m10===1&&m100!==11?a:(m10>=2&&m10<=4&&(m100<10||m100>=20)?b:c)); };
+const fmtTime = t => { try{ return new Date(t).toLocaleString('ru-RU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } };
+const pad = n => String(n).padStart(2,'0');
+function clockToken(){
+  const d=new Date();
+  const s = pad(d.getFullYear()%100)+pad(d.getMonth()+1)+pad(d.getDate())+pad(d.getHours())+pad(d.getMinutes())+pad(d.getSeconds());
+  return 'oT'+s+'oTZ'+(-d.getTimezoneOffset());
+}
+
+// ---------- Store (this device + backup file) ----------
+const LS_KEY='labsqr.v1';
+const blank = () => ({sets:[], ext:{}, set:{}, history:[], lastBackup:0});
+const store = {
+  data: blank(), ok:true,
+  init(){
+    try{ const r=localStorage.getItem(LS_KEY); if(r) this.data=Object.assign(blank(),JSON.parse(r)); }catch(e){ this.ok=false; }
+    try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist(); }catch(e){}
+    renderAll();
+  },
+  save(){
+    try{ localStorage.setItem(LS_KEY, JSON.stringify(this.data)); this.ok=true; }
+    catch(e){ this.ok=false; toast('Не удалось сохранить на устройстве — сделайте резервную копию'); }
+    renderBackup();
+  }
+};
+
+// ---------- Backup file ----------
+function backupBlob(){
+  const body={app:'labs-qr-pult', version:1, saved:new Date().toISOString(), ...store.data};
+  return new Blob([JSON.stringify(body,null,2)],{type:'application/json'});
+}
+async function saveBackup(){
+  const d=new Date(); const name=`labs-qr-${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}.json`;
+  const blob=backupBlob();
+  try{
+    const file=new File([blob],name,{type:'application/json'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title:'Резервная копия Labs QR-пульта'});
+      store.data.lastBackup=Date.now(); store.save(); toast('Копия передана'); return;
+    }
+  }catch(e){ if(e && e.name==='AbortError') return; }
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.append(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },1000);
+  store.data.lastBackup=Date.now(); store.save(); toast('Файл копии сохранён');
+}
+let pendingImport=null;
+function readBackup(file){
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const j=JSON.parse(r.result);
+      if(!j || !Array.isArray(j.sets) || typeof j.ext!=='object') throw 0;
+      pendingImport=Object.assign(blank(),{sets:j.sets,ext:j.ext||{},set:j.set||{},history:j.history||[]});
+      renderBackup();
+    }catch(e){ toast('Это не файл копии пульта'); }
+  };
+  r.readAsText(file);
+}
+function renderBackup(){
+  const box=$('#backupBox'); if(!box) return;
+  box.replaceChildren();
+  const D=store.data;
+  box.append(h('p',{class:'note',style:'margin:0',text: D.lastBackup ? 'Последняя копия: '+fmtTime(D.lastBackup) : 'Копию ещё не делали.'}));
+  box.append(h('div',{class:'row'},
+    h('button',{class:'btn primary',onclick:saveBackup},'Сохранить копию'),
+    h('label',{class:'btn',for:'importFile'},'Загрузить копию')));
+  if(pendingImport){
+    const P=pendingImport;
+    box.append(h('div',{class:'confirm',style:'background:var(--accent-soft);border-color:var(--accent)'},
+      h('span',{style:'flex:1 1 200px',text:`В файле: ${plural(P.sets.length,'набор','набора','наборов')}, ${plural(Object.keys(P.ext).length,'включённая функция','включённые функции','включённых функций')} в журнале.`}),
+      h('button',{class:'btn sm primary',onclick:()=>{
+        const names=new Set(store.data.sets.map(s=>s.name));
+        P.sets.forEach(s=>{ if(!names.has(s.name)) store.data.sets.push(s); });
+        store.data.ext=Object.assign({},store.data.ext,P.ext); store.data.set=Object.assign({},store.data.set,P.set);
+        store.data.history=[...P.history,...store.data.history].sort((a,b)=>b.t-a.t).slice(0,25);
+        pendingImport=null; store.save(); renderAll(); toast('Копия добавлена');
+      }},'Добавить к текущим'),
+      h('button',{class:'btn sm danger',onclick:()=>{ const lb=store.data.lastBackup; store.data=Object.assign(P,{lastBackup:lb}); pendingImport=null; store.save(); renderAll(); toast('Данные заменены копией'); }},'Заменить всё'),
+      h('button',{class:'btn sm',onclick:()=>{ pendingImport=null; renderBackup(); }},'Отмена')));
+  }
+}
+
+// ---------- Builder state ----------
+let sel = {};        // id -> token (set/act) | {m:'on'|'off', v}
+let extraRaw = '';   // unrecognized part of a loaded code
+let persist = 'perm';
+let curCat = 'all';
+let showAdv = false;
+
+function extToken(o, mode, v, forcePfx){
+  const pfx = forcePfx || (o && o.perm ? '*' : (persist==='perm' ? '*' : '$'));
+  const code = o ? o.code : '';
+  const isTxt = o && o.ctl.t==='txt';
+  if (mode==='off') return pfx+code+'='+(isTxt?'""':'0');
+  if (o.ctl.t==='tog') return pfx+code+'=1';
+  if (isTxt){ const val=String(v??o.ctl.def).replace(/[^A-Za-z0-9_\-\[\]\.,]/g,''); return pfx+code+'="'+val+'"'; }
+  return pfx+code+'='+(v??o.ctl.def);
+}
+function buildCode(s=sel, extra=extraRaw){
+  const parts=[];
+  OPTS.filter(o=>o.kind==='set' && s[o.id]).forEach(o=>parts.push(s[o.id]==='CLOCK'?clockToken():s[o.id]));
+  OPTS.filter(o=>o.kind==='ext' && s[o.id]).forEach(o=>parts.push(extToken(o, s[o.id].m, s[o.id].v)));
+  if (extra) parts.push(extra);
+  ['start','stop','off'].forEach(id=>{ if(s[id]) parts.push(s[id]); });
+  return parts.join('');
+}
+const selCount = () => Object.keys(sel).length + (extraRaw?1:0);
+
+// ---------- Parser / decoder ----------
+const OPT_SUB = [/^T\d{12}(\.\d+)?/, /^TZ-?\d+/, /^TD[01]/, /^S[A-D]\d+/, /^SR/, /^VC[01]/, /^F[0-9A-Z]/, /^D[O0-9]/, /^L\d{1,2}/, /^[A-Z]-?[0-9.]*/];
+function tokenize(str){
+  const s=String(str||'').replace(/[“”„]/g,'"').trim();
+  const out=[]; let i=0;
+  while(i<s.length){
+    const rest=s.slice(i); const c=s[i]; let m;
+    if (/\s/.test(c)){ i++; continue; }
+    if ((m=rest.match(/^(\*|\$|!M|oM)([A-Z0-9]{4})=("([^"]*)"?|[^a-z*$!"<>~+]*)/))){
+      const quoted=m[3].startsWith('"');
+      out.push({k:'ext', pfx:m[1], code:m[2], val:quoted?(m[4]||''):m[3], quoted, perm:(m[1]==='*'||m[1]==='!M'), raw:m[0]}); i+=m[0].length; continue;
+    }
+    if ((m=rest.match(/^!(RESET|FRESET|FORMAT|PRESET|WRESET)/))){ out.push({k:'danger', w:m[1], raw:m[0]}); i+=m[0].length; continue; }
+    if ((m=rest.match(/^!SAVE[a-z0-9_]*=("[^"]*"?|[^\s]*)/))){ out.push({k:'script', raw:m[0]}); i+=m[0].length; continue; }
+    if ((m=rest.match(/^!L[a-z0-9_]+/))){ out.push({k:'script', raw:m[0]}); i+=m[0].length; continue; }
+    if ((m=rest.match(/^!([srn]?[0-9:;.\-+]*)([A-Z])([A-Z0-9]*)/))){ out.push({k:'act', time:m[1], letter:m[2], tail:m[3], raw:m[0]}); i+=m[0].length; continue; }
+    if (c==='"'){ const j=s.indexOf('"',i+1); const raw=s.slice(i, j<0?s.length:j+1); out.push({k:'msg', raw}); i+=raw.length; continue; }
+    if (c==='o' && (m=rest.match(/^o([A-Z0-9.\-+]+)/))){
+      let run=m[1]; const subs=[];
+      while(run.length){ let hit=null; for(const re of OPT_SUB){ const mm=run.match(re); if(mm&&mm[0]){hit=mm[0];break;} } if(!hit) hit=run[0]; subs.push(hit); run=run.slice(hit.length); }
+      subs.forEach(sb=>out.push({k:'opt', tok:'o'+sb, raw:'o'+sb}));
+      i+=m[0].length; continue;
+    }
+    if (/[a-z]/.test(c)){ m=rest.match(/^[a-z][^a-z*$!"<>~+=\s]*/); out.push({k:'cmd', tok:m[0], raw:m[0]}); i+=m[0].length; continue; }
+    m=rest.match(/^[<>~+=][^a-z*$!"\s]*/); const raw=m?m[0]:c; out.push({k:'logic', raw}); i+=raw.length;
+  }
+  // merge clock pair
+  return out;
+}
+const ACT_NAMES = {S:'Начать запись',E:'Остановить запись',N:'Пауза / ожидание',O:'Выключить камеру',R:'Повторить скрипт',B:'Мигнуть / пискнуть',C:'Освободить место на карте',D:'Синхронизировать время по GPS',F:'Снимок экрана',G:'Прямая трансляция',U:'Загрузка в облако',W:'Подключиться к Wi-Fi',X:'Выйти из скрипта',Z:'Блокировка кнопок',T:'Скорость TimeWarp',P:'Сделать фото'};
+function describeTime(t){
+  if(!t) return '';
+  if(/^s/.test(t)) return ' · относительно заката '+t.slice(1);
+  if(/^r/.test(t)) return ' · относительно рассвета '+t.slice(1);
+  if(/^n/.test(t)) return ' · в полдень';
+  if(/:/.test(t)) return ' · в '+t;
+  return ' · через '+t+' с';
+}
+function valueLabel(o, val){
+  if(!o) return val;
+  if(o.ctl.t==='sel'){ const f=o.ctl.opts.find(x=>x[0]===String(val)); return f?f[1]:val; }
+  if(o.ctl.t==='tog') return '';
+  return val+(o.ctl.unit?' ('+o.ctl.unit+')':'');
+}
+function describe(tok){
+  if(tok.k==='ext'){
+    const o=EXT[tok.code]; const off = tok.val==='0' || tok.val==='';
+    const name = o ? o.title : (EXTRA_NAMES[tok.code] || 'Labs-функция '+tok.code);
+    const life = tok.perm ? 'навсегда' : 'до выключения камеры';
+    if(tok.code==='FEAT') return {tag:'act',tagText:'ДЕЙСТВ',title:name,sub:'на '+tok.val+' с'};
+    if(tok.code==='SPED') return {tag:'act',tagText:'ДЕЙСТВ',title:name,sub:'один раз'};
+    if(off) return {tag:'off',tagText:'ВЫКЛ',title:name,sub:life};
+    const vl = o ? valueLabel(o,tok.val) : tok.val;
+    return {tag:'on',tagText:'ВКЛ',title:name,sub:(vl?vl+' · ':'')+life};
+  }
+  if(tok.k==='opt'||tok.k==='cmd'){
+    const t=tok.tok;
+    if(/^oT\d{12}/.test(t)){ const d=t.slice(2); return {tag:'set',tagText:'НАСТР',title:'Часы камеры',sub:`${d.slice(4,6)}.${d.slice(2,4)}.20${d.slice(0,2)} ${d.slice(6,8)}:${d.slice(8,10)}:${d.slice(10,12)}`}; }
+    if(/^oTZ/.test(t)){ const n=+t.slice(3); const mins=Math.abs(n)>24?n:n*60; const hh=mins/60; return {tag:'set',tagText:'НАСТР',title:'Часовой пояс',sub:'UTC'+(hh>=0?'+':'')+hh}; }
+    if(/^oTD/.test(t)) return {tag:'set',tagText:'НАСТР',title:'Летнее время',sub:t.endsWith('1')?'вкл':'выкл'};
+    if(/^oS[A-D]\d+/.test(t)||t==='oSR') return {tag:'set',tagText:'НАСТР',title:'Меню быстрого доступа',sub:t==='oSR'?'сбросить':'кнопка '+t[2]};
+    const f=TOK[t]; if(f) return {tag:'set',tagText:'НАСТР',title:f.opt.title,sub:f.label};
+    return {tag:'unk',tagText:'?',title:(tok.k==='opt'?'Настройка камеры':'Команда съёмки'),sub:'нет в справочнике пульта'};
+  }
+  if(tok.k==='act'){
+    let name=ACT_NAMES[tok.letter]||'Действие '+tok.letter;
+    if(tok.letter==='O'&&tok.tail==='R') name='Перезагрузить камеру';
+    if(tok.letter==='S'&&tok.tail==='Q') name='Начать запись (экономно)';
+    if(tok.letter==='S'&&/^M/.test(tok.tail)) name='Начать запись по движению';
+    return {tag:'act',tagText:'ДЕЙСТВ',title:name,sub:describeTime(tok.time).replace(/^ · /,'')};
+  }
+  if(tok.k==='danger'){
+    const m={RESET:'Стереть все сохранённые Labs-настройки',FRESET:'Сброс камеры к заводским',FORMAT:'Форматировать карту — всё удалится',PRESET:'Вернуть заводские пресеты',WRESET:'Сбросить Wi-Fi и Bluetooth'};
+    return {tag:'off',tagText:'ОПАСНО',title:m[tok.w],sub:'необратимо'};
+  }
+  if(tok.k==='msg') return {tag:'unk',tagText:'ТЕКСТ',title:'Сообщение на экране',sub:tok.raw.replace(/"/g,'')};
+  if(tok.k==='script') return {tag:'act',tagText:'СКРИПТ',title:'Сохранить / запустить скрипт',sub:''};
+  return {tag:'unk',tagText:'ЛОГИКА',title:'Условие скрипта',sub:'для опытных'};
+}
+function renderLines(ul, code){
+  ul.replaceChildren();
+  const toks=tokenize(code);
+  if(!toks.length){ ul.append(h('li',{},h('span',{class:'txt',text:'Пустой код'}))); return toks; }
+  toks.forEach(t=>{
+    const d=describe(t);
+    ul.append(h('li',{}, h('span',{class:'tag '+d.tag,text:d.tagText}),
+      h('span',{class:'txt'}, h('b',{text:d.title}), d.sub?h('small',{text:d.sub}):null, h('span',{class:'raw',text:t.raw}))));
+  });
+  return toks;
+}
+
+// Load a code into the builder
+function codeToSel(code){
+  const s={}; const extra=[];
+  tokenize(code).forEach(t=>{
+    if(t.k==='ext' && EXT[t.code]){ const off=t.val==='0'||t.val===''; s[t.code]= off?{m:'off'}:{m:'on',v:EXT[t.code].ctl.t==='tog'?'1':t.val}; if(!EXT[t.code].perm) persist=t.perm?'perm':'temp'; return; }
+    if((t.k==='opt'||t.k==='cmd') && TOK[t.tok]){ s[TOK[t.tok].opt.id]=t.tok; return; }
+    if(t.k==='opt' && /^oT\d{12}/.test(t.tok)){ s.clock='CLOCK'; return; }
+    if(t.k==='opt' && /^oTZ/.test(t.tok)) return;
+    if(t.k==='act'){ const f=OPTS.find(o=>o.kind==='act'&&o.opts.some(x=>x[0]===t.raw)); if(f){ s[f.id]=t.raw; return; } }
+    extra.push(t.raw);
+  });
+  return {s, extra:extra.join('')};
+}
+
+// ---------- QR rendering ----------
+function qrSvg(text){
+  if(typeof qrcode!=='function') return null;
+  let qr=null;
+  for(const ecl of ['M','L']){ try{ qr=qrcode(0,ecl); qr.addData(text,'Byte'); qr.make(); break; }catch(e){ qr=null; } }
+  if(!qr) return null;
+  const n=qr.getModuleCount(), q=3; let d='';
+  for(let r=0;r<n;r++) for(let c=0;c<n;c++) if(qr.isDark(r,c)) d+=`M${c+q} ${r+q}h1v1h-1z`;
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  svg.setAttribute('viewBox',`0 0 ${n+q*2} ${n+q*2}`); svg.setAttribute('shape-rendering','crispEdges'); svg.setAttribute('role','img'); svg.setAttribute('aria-label','QR-код');
+  svg.innerHTML=`<rect width="100%" height="100%" fill="#FFFFFF"/><path d="${d}" fill="#000000"/>`;
+  return {svg, n};
+}
+
+// ---------- Sheet ----------
+let sheetCode='', sheetLive=null, sheetSrc=null;
+function openSheet(code, {title='QR-код', live=null, saveName='', src=null}={}){
+  sheetLive=live; sheetSrc=src;
+  $('#sheetTitle').textContent=title;
+  $('#saveName').value=saveName;
+  $('#savePanel').hidden = false;
+  drawSheet(code);
+  $('#sheet').hidden=false; document.body.style.overflow='hidden';
+  clearInterval(openSheet.t);
+  if(live) openSheet.t=setInterval(()=>drawSheet(live()),1000);
+}
+function drawSheet(code){
+  sheetCode=code;
+  const box=$('#qrBox'); box.replaceChildren();
+  const r=qrSvg(code);
+  if(r){ box.append(r.svg); $('#qrMeta').textContent=plural(code.length,'символ','символа','символов')+(sheetLive?' · время обновляется каждую секунду':''); }
+  else { box.append(h('div',{style:'color:#000;padding:20px;text-align:center',text:typeof qrcode!=='function'?'Библиотека QR не загрузилась. Проверьте интернет и откройте страницу заново.':'Код слишком длинный для одного QR. Уберите часть функций.'})); $('#qrMeta').textContent=''; }
+  $('#sheetCode').textContent=code;
+  renderLines($('#sheetLines'), code);
+}
+function closeSheet(){ $('#sheet').hidden=true; document.body.style.overflow=''; clearInterval(openSheet.t); sheetLive=null; }
+
+// ---------- Journal ----------
+function applyToJournal(code){
+  const now=Date.now(); const J=store.data;
+  tokenize(code).forEach(t=>{
+    if(t.k==='ext'){
+      if(t.code==='FEAT'||t.code==='SPED') return;
+      if(t.val==='0'||t.val==='') delete J.ext[t.code];
+      else J.ext[t.code]={v:t.val, perm:t.perm, t:now};
+    } else if(t.k==='opt'||t.k==='cmd'){
+      if(TOK[t.tok]) J.set[TOK[t.tok].opt.id]={tok:t.tok,t:now};
+      else if(/^oT\d{12}/.test(t.tok)) J.set.clock={tok:'CLOCK',t:now};
+    } else if(t.k==='danger' && t.w==='RESET'){ J.ext={}; }
+  });
+  J.history.unshift({code: code.replace(/oT\d{12}(\.\d+)?/,'oT'+'<время>'), t:now});
+  J.history=J.history.slice(0,25);
+  store.save(); renderAll();
+  toast('Записано в журнал');
+}
+
+// ---------- Render: builder ----------
+function renderRecipes(){
+  const box=$('#recipes'); box.replaceChildren();
+  RECIPES.forEach(r=>box.append(h('button',{class:'recipe',onclick:()=>{
+    sel=JSON.parse(JSON.stringify(r.sel)); extraRaw=''; renderBuilder();
+    const live = sel.clock ? ()=>buildCode() : null;
+    openSheet(buildCode(),{title:r.name,live,saveName:r.name});
+  }}, h('b',{text:r.name}), h('span',{text:r.sub}))));
+}
+function renderCats(){
+  const bar=$('#catbar'); bar.replaceChildren();
+  [['all','Все'],['picked','Выбрано'],...CATS,['adv',showAdv?'Скрыть сложные':'Показать сложные']].forEach(([id,l])=>{
+    if(id==='adv'){ bar.append(h('button',{class:'chip','aria-pressed':String(showAdv),onclick:()=>{showAdv=!showAdv;renderCats();renderOpts();}},l)); return; }
+    bar.append(h('button',{class:'chip','aria-pressed':String(curCat===id),onclick:()=>{curCat=id;renderCats();renderOpts();}}, l));
+  });
+}
+function optCard(o){
+  const st=sel[o.id];
+  const cls = o.kind==='ext' ? (st?.m==='on'?'is-on':st?.m==='off'?'is-off':'') : (st?'is-set':'');
+  const card=h('div',{class:'opt '+cls});
+  const head=h('div',{class:'opt-h'}, h('div',{class:'tt'}, h('h3',{text:o.title}), o.kind==='ext'?h('div',{class:'code',text:o.code+(o.perm?' · только навсегда':'')}):null));
+  card.append(head);
+  if(o.desc) card.append(h('p',{text:o.desc}));
+  if(o.kind==='ext'){
+    const seg=h('div',{class:'seg',role:'group','aria-label':o.title});
+    [['n','Не трогать',null],['on','Вкл','on'],['off','Выкл','off']].forEach(([c,l,m])=>{
+      seg.append(h('button',{class:c,'aria-pressed':String((st?.m||null)===m),onclick:()=>{
+        if(!m) delete sel[o.id]; else sel[o.id]={m, v: st?.v ?? (o.ctl.t==='tog'?'1':o.ctl.def)};
+        renderBuilder();
+      }}, l));
+    });
+    head.append(seg);
+    if(o.warn && st?.m==='on') card.append(h('div',{class:'warn',text:o.warn}));
+    if(st?.m==='on' && o.ctl.t!=='tog'){
+      const val=h('div',{class:'val'}); const id='in-'+o.id;
+      const upd=v=>{ sel[o.id].v=v; updateCart(); };
+      if(o.ctl.t==='num'){
+        const num=h('input',{type:'number',id,min:o.ctl.min,max:o.ctl.max,step:o.ctl.step||1,value:st.v,inputmode:'decimal','aria-label':o.title});
+        let rng=null;
+        if(o.ctl.range){ rng=h('input',{type:'range',min:o.ctl.min,max:o.ctl.max,step:o.ctl.step||1,value:st.v,'aria-label':o.title}); rng.addEventListener('input',()=>{num.value=rng.value;upd(rng.value);}); }
+        num.addEventListener('input',()=>{ let v=num.value; if(v==='') return; v=Math.min(o.ctl.max,Math.max(o.ctl.min,+v)); if(rng) rng.value=v; upd(String(v)); });
+        val.append(rng||'', num, h('span',{class:'unit',text:o.ctl.unit||''}));
+      } else if(o.ctl.t==='sel'){
+        const s=h('select',{id,'aria-label':o.title}); o.ctl.opts.forEach(([v,l])=>s.append(h('option',{value:v,selected:String(st.v)===v},l)));
+        s.addEventListener('change',()=>upd(s.value)); val.append(s);
+      } else {
+        const t=h('input',{type:'text',id,value:st.v,autocapitalize:'off',autocomplete:'off',spellcheck:'false','aria-label':o.title});
+        t.addEventListener('input',()=>upd(t.value)); val.append(t);
+      }
+      card.append(val);
+    }
+  } else {
+    const chips=h('div',{class:'chips',role:'group','aria-label':o.title});
+    o.opts.forEach(([tok,l])=>chips.append(h('button',{class:'chip','aria-pressed':String(st===tok),onclick:()=>{ if(sel[o.id]===tok) delete sel[o.id]; else sel[o.id]=tok; renderBuilder(); }}, l)));
+    card.append(chips);
+  }
+  return card;
+}
+function renderOpts(){
+  const list=$('#optList'); list.replaceChildren();
+  const q=$('#search').value.trim().toLowerCase();
+  let items=OPTS.filter(o=>{
+    if(q) return (o.title+' '+(o.desc||'')+' '+(o.code||'')).toLowerCase().includes(q);
+    if(curCat==='picked') return !!sel[o.id];
+    if(o.adv && !showAdv && !sel[o.id]) return false;
+    return curCat==='all' || o.cat===curCat;
+  });
+  if(!items.length){ list.append(h('div',{class:'empty',text:curCat==='picked'?'Пока ничего не выбрано. Включите что-нибудь в разделах выше.':'Ничего не нашлось.'})); return; }
+  let last=null;
+  items.forEach(o=>{
+    if((curCat==='all'||q||curCat==='picked') && o.cat!==last){ last=o.cat; list.append(h('div',{class:'cat-h',text:CATS.find(c=>c[0]===o.cat)[1]})); }
+    list.append(optCard(o));
+  });
+  if(extraRaw && (curCat==='all'||curCat==='picked')){
+    list.append(h('div',{class:'opt is-set'}, h('div',{class:'opt-h'}, h('div',{class:'tt'},h('h3',{text:'Дополнительные команды'}), h('div',{class:'code',text:extraRaw})),
+      h('button',{class:'btn sm',onclick:()=>{extraRaw='';renderBuilder();}},'Убрать')),
+      h('p',{text:'Эти команды пришли из загруженного кода, в каталоге пульта их нет. Они останутся в QR как есть.'})));
+  }
+}
+function updateCart(){
+  const n=selCount();
+  $('#cart').hidden = n===0 || $('#v-build').hidden;
+  $('#cartCount').textContent=plural(n,'команда','команды','команд');
+  const names=Object.keys(sel).map(id=>{ const o=BYID[id]; const st=sel[id]; return o.kind==='ext' ? o.title+(st.m==='off'?' — выкл':'') : o.title; });
+  $('#cartSummary').textContent=names.join(', ');
+}
+function renderPersist(){
+  $('#persistPerm').setAttribute('aria-pressed',String(persist==='perm'));
+  $('#persistTemp').setAttribute('aria-pressed',String(persist==='temp'));
+}
+function renderBuilder(){ renderPersist(); renderOpts(); updateCart(); }
+
+// ---------- Render: state ----------
+function renderState(){
+  const J=store.data;
+  const keys=Object.keys(J.ext);
+  const badge=$('#tabBadge'); badge.hidden=!keys.length; badge.textContent=keys.length;
+  $('#onCount').textContent=keys.length?plural(keys.length,'функция','функции','функций'):'';
+  const box=$('#onList'); box.replaceChildren();
+  const acts=$('#onActions'); acts.replaceChildren();
+  if(!keys.length){ box.append(h('div',{class:'empty',text:'По журналу Labs-функции выключены. Соберите код и после сканирования нажмите «Я отсканировал».'})); }
+  else {
+    const checks={};
+    keys.sort((a,b)=>J.ext[b].t-J.ext[a].t).forEach(k=>{
+      const e=J.ext[k]; const o=EXT[k];
+      const cb=h('input',{type:'checkbox',id:'off-'+k,'aria-label':'Выключить '+(o?o.title:k)}); checks[k]=cb;
+      const vl=o?valueLabel(o,e.v):e.v;
+      box.append(h('label',{class:'item',for:'off-'+k}, cb,
+        h('div',{class:'grow'}, h('b',{text:o?o.title:(EXTRA_NAMES[k]||k)}), h('small',{text:[vl,k,fmtTime(e.t)].filter(Boolean).join(' · ')})),
+        h('span',{class:'pill '+(e.perm?'perm':'temp'),text:e.perm?'навсегда':'до выкл.'})));
+    });
+    const offCode=list=>list.map(k=>{ const o=EXT[k]; return extToken(o||{code:k,ctl:{t:'num'}},'off',null,'*'); }).join('');
+    acts.append(
+      h('button',{class:'btn danger',onclick:()=>{ const pick=keys.filter(k=>checks[k].checked); if(!pick.length){toast('Отметьте галочками, что выключить');return;} openSheet(offCode(pick),{title:'Выключить выбранное'}); }},'QR: выключить отмеченное'),
+      h('button',{class:'btn',onclick:()=>openSheet(offCode(keys),{title:'Выключить всё из журнала',saveName:'Вернуть как было'})},'QR: выключить всё это'),
+      h('button',{class:'btn',onclick:()=>{ sel={}; extraRaw=''; keys.forEach(k=>{ if(EXT[k]) sel[k]={m:'on',v:EXT[k].ctl.t==='tog'?'1':J.ext[k].v}; }); go('build'); curCat='picked'; renderCats(); renderBuilder(); }},'Изменить в сборщике')
+    );
+    if(keys.some(k=>!J.ext[k].perm)) acts.append(h('button',{class:'btn ghost',onclick:()=>{ keys.forEach(k=>{ if(!J.ext[k].perm) delete J.ext[k]; }); store.save(); renderAll(); toast('Временные функции убраны из журнала'); }},'Я выключал камеру'));
+  }
+  const sl=$('#setList'); sl.replaceChildren();
+  const sk=Object.keys(J.set);
+  if(!sk.length) sl.append(h('div',{class:'empty',text:'Пока ничего. Здесь появятся режим, разрешение, писк и т. п., которые вы задавали кодом.'}));
+  sk.sort((a,b)=>J.set[b].t-J.set[a].t).forEach(id=>{
+    const o=BYID[id]; if(!o) return; const f=TOK[J.set[id].tok];
+    sl.append(h('div',{class:'item'}, h('div',{class:'grow'}, h('b',{text:o.title}), h('small',{text:fmtTime(J.set[id].t)})), h('span',{class:'pill',text:f?f.label:J.set[id].tok})));
+  });
+  if(sk.length) sl.append(h('p',{class:'note',style:'margin:6px 0 0',text:'Настройки можно поменять и в меню камеры — тогда журнал о них не узнает.'}));
+  const hl=$('#histList'); hl.replaceChildren();
+  if(!J.history.length) hl.append(h('div',{class:'empty',text:'Здесь будут коды, которые вы отметили как отсканированные.'}));
+  J.history.slice(0,12).forEach(x=>{
+    const code=x.code.replace('oT<время>','');
+    const n=tokenize(code).length;
+    hl.append(h('div',{class:'item'}, h('div',{class:'grow'}, h('b',{text:fmtTime(x.t)+' · '+plural(n,'команда','команды','команд')}), h('small',{class:'mono',text:x.code})),
+      h('button',{class:'btn sm',onclick:()=>{ $('#codeIn').value=code; go('decode'); doDecode(); }},'Разобрать')));
+  });
+}
+
+// ---------- Render: sets ----------
+let confirmDel=null;
+function renderSets(){
+  const box=$('#setsList'); box.replaceChildren();
+  const S=store.data.sets;
+  if(!S.length){ box.append(h('div',{class:'empty'}, 'Наборов пока нет. Соберите код и нажмите «Сохранить как набор» под QR.')); return; }
+  S.forEach((s,i)=>{
+    const toks=tokenize(s.code);
+    const summary=toks.map(t=>{ const d=describe(t); return d.title+(d.tag==='off'?' (выкл)':''); }).join(', ');
+    const card=h('div',{class:'panel'},
+      h('div',{class:'row',style:'justify-content:space-between'}, h('h2',{text:s.name}), h('span',{class:'note',text:plural(toks.length,'команда','команды','команд')})),
+      h('p',{class:'note',style:'margin:0',text:summary}),
+      h('div',{class:'row'},
+        h('button',{class:'btn primary',onclick:()=>{ const live=/oT\d{12}/.test(s.code)?()=>s.code.replace(/oT\d{12}(\.\d+)?oTZ-?\d+/,clockToken()):null; openSheet(live?live():s.code,{title:s.name,live,saveName:s.name,src:i}); }},'Показать QR'),
+        h('button',{class:'btn',onclick:()=>{ loadIntoBuilder(s.code); }},'Изменить'),
+        h('button',{class:'btn ghost',onclick:()=>{ confirmDel=i; renderSets(); }},'Удалить')));
+    if(confirmDel===i) card.append(h('div',{class:'confirm'}, h('span',{style:'flex:1 1 160px',text:'Удалить набор «'+s.name+'»?'}),
+      h('button',{class:'btn sm danger',onclick:()=>{ S.splice(i,1); confirmDel=null; store.save(); renderSets(); toast('Набор удалён'); }},'Удалить'),
+      h('button',{class:'btn sm',onclick:()=>{ confirmDel=null; renderSets(); }},'Отмена')));
+    box.append(card);
+  });
+}
+
+function loadIntoBuilder(code){
+  const r=codeToSel(code); sel=r.s; extraRaw=r.extra;
+  go('build'); curCat='picked'; renderCats(); renderBuilder(); closeSheet();
+  toast('Код загружен в сборщик');
+}
+
+// ---------- Decode ----------
+function doDecode(){
+  const code=$('#codeIn').value.trim();
+  if(!code){ toast('Вставьте текст кода или выберите картинку'); return; }
+  $('#decodeOut').hidden=false;
+  renderLines($('#decodeLines'), code);
+}
+$('#qrFile').addEventListener('change', e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const msg=$('#scanMsg'); msg.textContent='Ищу QR на картинке…';
+  const img=new Image(); const url=URL.createObjectURL(f);
+  img.onload=()=>{
+    const tryScale=[1600,1000,700];
+    let found=null;
+    for(const maxS of tryScale){
+      const k=Math.min(1, maxS/Math.max(img.width,img.height));
+      const w=Math.round(img.width*k), hh=Math.round(img.height*k);
+      const cv=document.createElement('canvas'); cv.width=w; cv.height=hh; const cx=cv.getContext('2d'); cx.drawImage(img,0,0,w,hh);
+      const data=cx.getImageData(0,0,w,hh);
+      if(typeof jsQR==='function'){ const r=jsQR(data.data,w,hh,{inversionAttempts:'attemptBoth'}); if(r&&r.data){found=r.data;break;} }
+    }
+    URL.revokeObjectURL(url); e.target.value='';
+    if(typeof jsQR!=='function'){ msg.textContent='Сканер не загрузился. Проверьте интернет или вставьте текст кода вручную.'; return; }
+    if(!found){ msg.textContent='QR не найден. Снимите ближе и ровнее, чтобы код занимал большую часть кадра.'; return; }
+    msg.textContent='Код прочитан.'; $('#codeIn').value=found; doDecode();
+  };
+  img.onerror=()=>{ msg.textContent='Не удалось открыть картинку.'; URL.revokeObjectURL(url); };
+  img.src=url;
+});
+$('#btnDecode').onclick=doDecode;
+$('#btnSample').onclick=()=>{ $('#codeIn').value='mVr4p60*BITR=150*LEVL=5$HIST=1oV0oD0!S!60E'; doDecode(); };
+$('#decToQR').onclick=()=>{ const c=$('#codeIn').value.trim(); if(c) openSheet(c,{title:'Код из расшифровки'}); };
+$('#decToBuild').onclick=()=>{ const c=$('#codeIn').value.trim(); if(c) loadIntoBuilder(c); };
+$('#decApplied').onclick=()=>{ const c=$('#codeIn').value.trim(); if(c) applyToJournal(c); };
+
+// ---------- Tabs ----------
+const TABS=['build','state','sets','decode'];
+function go(tab){
+  if(!TABS.includes(tab)) tab='build';
+  TABS.forEach(t=>{ $('#v-'+t).hidden = t!==tab; document.querySelector(`[data-tab="${t}"]`).setAttribute('aria-selected',String(t===tab)); });
+  if(location.hash!=='#'+tab) history.replaceState(null,'','#'+tab);
+  updateCart(); window.scrollTo(0,0);
+}
+document.querySelectorAll('.tabs [data-tab]').forEach(b=>b.addEventListener('click',()=>go(b.dataset.tab)));
+window.addEventListener('hashchange',()=>go(location.hash.slice(1)));
+
+// ---------- Wiring ----------
+$('#persistPerm').onclick=()=>{ persist='perm'; renderBuilder(); };
+$('#persistTemp').onclick=()=>{ persist='temp'; renderBuilder(); };
+$('#search').addEventListener('input',renderOpts);
+$('#cartClear').onclick=()=>{ sel={}; extraRaw=''; renderBuilder(); };
+$('#cartGo').onclick=()=>{ const live= sel.clock ? ()=>buildCode() : null; openSheet(buildCode(),{title:'Ваш QR-код',live}); };
+$('#sheetClose').onclick=closeSheet;
+document.addEventListener('keydown',e=>{ if(e.key==='Escape' && !$('#sheet').hidden) closeSheet(); });
+$('#sheetApplied').onclick=()=>{ applyToJournal(sheetCode); closeSheet(); };
+$('#sheetEdit').onclick=()=>loadIntoBuilder(sheetCode);
+$('#sheetCopy').onclick=()=>{
+  const fallback=()=>{ const r=document.createRange(); r.selectNodeContents($('#sheetCode')); const s=getSelection(); s.removeAllRanges(); s.addRange(r); toast('Текст выделен — скопируйте его'); };
+  try{ navigator.clipboard.writeText(sheetCode).then(()=>toast('Скопировано'),fallback); }catch(e){ fallback(); }
+};
+$('#saveBtn').onclick=()=>{
+  const name=$('#saveName').value.trim(); if(!name){ toast('Введите название набора'); $('#saveName').focus(); return; }
+  const code=sheetCode; const S=store.data.sets;
+  const idx=S.findIndex(s=>s.name===name);
+  if(idx>=0) S[idx].code=code; else S.unshift({name, code, t:Date.now()});
+  store.save(); renderSets(); toast(idx>=0?'Набор обновлён':'Набор сохранён');
+};
+$('#btnFeat').onclick=()=>openSheet('$FEAT=15',{title:'Показать на камере, что включено'});
+$('#btnAllOff').onclick=()=>{
+  const code=OPTS.filter(o=>o.kind==='ext').map(o=>extToken(o,'off',null,'*')).join('');
+  openSheet(code,{title:'Выключить все Labs-функции',saveName:'Всё выключить'});
+};
+
+$('#importFile').addEventListener('change',e=>{ const f=e.target.files[0]; if(f) readBackup(f); e.target.value=''; });
+function renderAll(){ renderSets(); renderState(); renderBackup(); }
+renderRecipes(); renderCats(); renderBuilder();
+go(location.hash.slice(1)||'build');
+store.init();
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
+}
+})();
+</script>
+</body>
+</html>
