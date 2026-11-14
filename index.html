@@ -228,7 +228,7 @@ textarea.codein{width:100%;min-height:90px;font-family:var(--f-mono);font-size:1
     <p class="lead">Камера сама не сообщает, что в ней включено. Здесь — то, что вы применили через этот пульт. Нажимайте «Я отсканировал» после каждого кода, и журнал будет точным.</p>
     <div class="panel">
       <h2>Проверить прямо на камере</h2>
-      <p class="note" style="margin:0">Код покажет на экране камеры все постоянно включённые Labs-функции на 15 секунд.</p>
+      <p class="note" style="margin:0">Код покажет на экране камеры все постоянно включённые Labs-функции на 30 секунд — успеете прочитать или сфотографировать. Другая длительность — в «Собрать → Действия».</p>
       <div class="row"><button class="btn" id="btnFeat">Показать QR «что включено»</button></div>
     </div>
     <div class="panel">
@@ -428,6 +428,7 @@ S('wifi','camera','Wi-Fi','',[['oW0','Выкл'],['oW1','Вкл']]);
 S('lang','camera','Язык меню','',[['oL9','Русский'],['oL0','English']]);
 
 // Действия (идут в конце кода)
+A('feat','Показать, что включено (FEAT)','Камера выведет на экран список постоянно включённых Labs-функций. Чем дольше — тем проще успеть прочитать или сфотографировать.',[['$FEAT=15','15 с'],['$FEAT=30','30 с'],['$FEAT=60','60 с']]);
 A('start','Начать запись','После применения настроек.',[['!S','Сразу'],['!3S','Через 3 с'],['!10S','Через 10 с']]);
 A('stop','Остановить запись','Через сколько после начала.',[['!30E','30 с'],['!60E','1 мин'],['!300E','5 мин'],['!600E','10 мин']]);
 A('off','Выключить камеру','В самом конце.',[['!O','Сразу'],['!5O','Через 5 с']]);
@@ -567,7 +568,7 @@ function buildCode(s=sel, extra=extraRaw){
   OPTS.filter(o=>o.kind==='set' && s[o.id]).forEach(o=>parts.push(s[o.id]==='CLOCK'?clockToken():s[o.id]));
   OPTS.filter(o=>o.kind==='ext' && s[o.id]).forEach(o=>parts.push(extToken(o, s[o.id].m, s[o.id].v)));
   if (extra) parts.push(extra);
-  ['start','stop','off'].forEach(id=>{ if(s[id]) parts.push(s[id]); });
+  ['feat','start','stop','off'].forEach(id=>{ if(s[id]) parts.push(s[id]); });
   return parts.join('');
 }
 const selCount = () => Object.keys(sel).length + (extraRaw?1:0);
@@ -667,6 +668,7 @@ function renderLines(ul, code){
 function codeToSel(code){
   const s={}; const extra=[];
   tokenize(code).forEach(t=>{
+    if(t.k==='ext' && t.code==='FEAT' && BYID.feat.opts.some(x=>x[0]==='$FEAT='+t.val)){ s.feat='$FEAT='+t.val; return; }
     if(t.k==='ext' && EXT[t.code]){ const off=t.val==='0'||t.val===''; s[t.code]= off?{m:'off'}:{m:'on',v:EXT[t.code].ctl.t==='tog'?'1':t.val}; if(!EXT[t.code].perm) persist=t.perm?'perm':'temp'; return; }
     if((t.k==='opt'||t.k==='cmd') && TOK[t.tok]){ s[TOK[t.tok].opt.id]=t.tok; return; }
     if(t.k==='opt' && /^oT\d{12}/.test(t.tok)){ s.clock='CLOCK'; return; }
@@ -795,7 +797,7 @@ function renderOpts(){
   const list=$('#optList'); list.replaceChildren();
   const q=$('#search').value.trim().toLowerCase();
   let items=OPTS.filter(o=>{
-    if(q) return (o.title+' '+(o.desc||'')+' '+(o.code||'')).toLowerCase().includes(q);
+    if(q) return (o.title+' '+(o.desc||'')+' '+(o.code||'')+' '+(o.opts||[]).map(x=>x[0]+' '+x[1]).join(' ')).toLowerCase().includes(q);
     if(curCat==='picked') return !!sel[o.id];
     if(o.adv && !showAdv && !sel[o.id]) return false;
     return curCat==='all' || o.cat===curCat;
@@ -966,7 +968,7 @@ $('#saveBtn').onclick=()=>{
   if(idx>=0) S[idx].code=code; else S.unshift({name, code, t:Date.now()});
   store.save(); renderSets(); toast(idx>=0?'Набор обновлён':'Набор сохранён');
 };
-$('#btnFeat').onclick=()=>openSheet('$FEAT=15',{title:'Показать на камере, что включено'});
+$('#btnFeat').onclick=()=>openSheet('$FEAT=30',{title:'Показать на камере, что включено'});
 $('#btnAllOff').onclick=()=>{
   const code=OPTS.filter(o=>o.kind==='ext').map(o=>extToken(o,'off',null,'*')).join('');
   openSheet(code,{title:'Выключить все Labs-функции',saveName:'Всё выключить'});
