@@ -405,6 +405,7 @@ E('GUID','help',T('Рамка кадрирования'),T('Рисует рам�
 E('FRNT','help',T('Сообщения Labs на переднем экране'),T('Удобно, когда снимаете себя.'),tog);
 E('FAST','help',T('Меньше сообщений при включении'),T('Сокращает приветствие Labs при старте камеры.'),tog);
 E('BYPS','help',T('Без всплывающих окон'),T('Не показывает окна вроде «сбросьте дату».'),tog);
+E('HSTP','help',T('Положение и размер гистограммы'),T('Где на экране рисовать гистограмму и какого размера. Формат x,y,размер: x и y — позиция в % экрана (1–100), размер 40–100. Отрицательный x — на передний экран. Работает, когда включена гистограмма.'),{t:'list',def:'1,83,67',unit:T('x,y,размер')},{noOff:true,warn:T('Выключить это отдельно нельзя — гистограмма выключается сама по себе (Гистограмма → Выкл).')});
 E('DSPL','help',T('Время показа сообщений Labs'),T('Сколько секунд висят сообщения Labs.'),{t:'num',min:1,max:9,def:3,unit:T('с')});
 
 // Качество
@@ -416,6 +417,8 @@ E('WIDE','quality',T('Широкий цветовой охват'),T('Родна
 E('LOGB','quality',T('Лог-кривая'),T('Плоская лог-картинка для грейдинга. Значение — основание лог-кривой.'),{t:'txt',def:'400'},{adv:true});
 E('GCMP','quality',T('Отключить гиро-компенсацию экспозиции'),T('Камера сможет ставить более длинную выдержку, но стабилизация станет слабее.'),tog,{adv:true});
 E('24HZ','quality',T('Ровно 24.000 кадра'),T('Вместо 23.976. Нужно для синхронизации с кинокамерами.'),tog,{adv:true});
+E('EXPX','quality',T('Самая длинная выдержка'),T('Камера не будет ставить выдержку длиннее 1/x с. Например, 48 — не длиннее 1/48 (правило 180° для 24 кадров), 180 — не длиннее 1/180: меньше смаза, но темнее в сумерках.'),{t:'num',min:24,max:8000,def:48,unit:T('1/x с, 24–8000')});
+E('EXPN','quality',T('Самая короткая выдержка'),T('Камера не будет ставить выдержку короче 1/x с — движение выглядит плавнее, но на ярком солнце нужен ND-фильтр.'),{t:'num',min:24,max:8000,def:500,unit:T('1/x с, 24–8000')},{adv:true});
 E('WBLK','quality',T('Фиксировать баланс белого при старте записи'),T('Для подводной съёмки: цвет не «гуляет».'),tog);
 
 // Файлы
@@ -586,6 +589,7 @@ function extToken(o, mode, v, forcePfx){
   const isTxt = o && o.ctl.t==='txt';
   if (mode==='off') return pfx+code+'='+(isTxt?'""':'0');
   if (o.ctl.t==='tog') return pfx+code+'=1';
+  if (o.ctl.t==='list'){ const val=String(v??o.ctl.def).replace(/[^0-9,\-]/g,''); return pfx+code+'='+val; }
   if (isTxt){ const val=String(v??o.ctl.def).replace(/[^A-Za-z0-9_\-\[\]\.,]/g,''); return pfx+code+'="'+val+'"'; }
   return pfx+code+'='+(v??o.ctl.def);
 }
@@ -722,7 +726,7 @@ function qrSvg(text){
 // ---------- Sheet ----------
 let sheetCode='', sheetLive=null, sheetSrc=null, sheetBase='', sheetOv={};
 // Tap-to-toggle: each line of the code can be flipped (on<->off) or skipped (left out of the code)
-function canFlip(t){ return t.k==='ext' && t.code!=='FEAT' && t.code!=='SPED'; }
+function canFlip(t){ return t.k==='ext' && t.code!=='FEAT' && t.code!=='SPED' && !(EXT[t.code]&&EXT[t.code].noOff); }
 function onValue(t){ const o=EXT[t.code]; if(!o || o.ctl.t==='txt') return null; return o.ctl.t==='tog'?'1':String(o.ctl.def); }
 function effTok(t, ov){
   if(!ov) return {raw:t.raw, tok:t};
@@ -824,7 +828,7 @@ function optCard(o){
   if(o.desc) card.append(h('p',{text:o.desc}));
   if(o.kind==='ext'){
     const seg=h('div',{class:'seg',role:'group','aria-label':o.title});
-    [['n',T('Не трогать'),null],['on',T('Вкл'),'on'],['off',T('Выкл'),'off']].forEach(([c,l,m])=>{
+    [['n',T('Не трогать'),null],['on',T('Вкл'),'on'],['off',T('Выкл'),'off']].filter(x=>!(o.noOff&&x[2]==='off')).forEach(([c,l,m])=>{
       seg.append(h('button',{class:c,'aria-pressed':String((st?.m||null)===m),onclick:()=>{
         if(!m) delete sel[o.id]; else sel[o.id]={m, v: st?.v ?? (o.ctl.t==='tog'?'1':o.ctl.def)};
         renderBuilder();
@@ -910,7 +914,7 @@ function renderState(){
         h('div',{class:'grow'}, h('b',{text:o?o.title:(EXTRA_NAMES[k]||k)}), h('small',{text:[vl,k,fmtTime(e.t)].filter(Boolean).join(' · ')})),
         h('span',{class:'pill '+(e.perm?'perm':'temp'),text:e.perm?T('навсегда'):T('до выкл.')})));
     });
-    const offCode=list=>list.map(k=>{ const o=EXT[k]; return extToken(o||{code:k,ctl:{t:'num'}},'off',null,'*'); }).join('');
+    const offCode=list=>list.filter(k=>!(EXT[k]&&EXT[k].noOff)).map(k=>{ const o=EXT[k]; return extToken(o||{code:k,ctl:{t:'num'}},'off',null,'*'); }).join('');
     acts.append(
       h('button',{class:'btn danger',onclick:()=>{ const pick=keys.filter(k=>checks[k].checked); if(!pick.length){toast(T('Отметьте галочками, что выключить'));return;} openSheet(offCode(pick),{title:T('Выключить выбранное')}); }},T('QR: выключить отмеченное')),
       h('button',{class:'btn',onclick:()=>openSheet(offCode(keys),{title:T('Выключить всё из журнала'),saveName:T('Вернуть как было')})},T('QR: выключить всё это')),
@@ -1035,7 +1039,7 @@ $('#saveBtn').onclick=()=>{
 };
 $('#btnFeat').onclick=()=>openSheet('$FEAT=30',{title:T('Показать на камере, что включено')});
 $('#btnAllOff').onclick=()=>{
-  const code=OPTS.filter(o=>o.kind==='ext').map(o=>extToken(o,'off',null,'*')).join('');
+  const code=OPTS.filter(o=>o.kind==='ext'&&!o.noOff).map(o=>extToken(o,'off',null,'*')).join('');
   openSheet(code,{title:T('Выключить все Labs-функции'),saveName:T('Всё выключить')});
 };
 

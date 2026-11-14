@@ -423,5 +423,14 @@ window.LABS_EN = {
 "Показать на камере, что включено": "Show what’s enabled on the camera",
 "Выключить все Labs-функции": "Turn off all Labs features",
 "Всё выключить": "Turn everything off",
-"»?": "”?"
+"»?": "”?",
+"Положение и размер гистограммы":"Histogram position & size",
+"Где на экране рисовать гистограмму и какого размера. Формат x,y,размер: x и y — позиция в % экрана (1–100), размер 40–100. Отрицательный x — на передний экран. Работает, когда включена гистограмма.":"Where to draw the histogram and how big. Format x,y,size: x and y are the position in % of the screen (1–100), size 40–100. A negative x puts it on the front screen. Works while the histogram is on.",
+"x,y,размер":"x,y,size",
+"Выключить это отдельно нельзя — гистограмма выключается сама по себе (Гистограмма → Выкл).":"This can’t be turned off on its own — turn the histogram itself off (Histogram → Off).",
+"Самая длинная выдержка":"Longest shutter",
+"Камера не будет ставить выдержку длиннее 1/x с. Например, 48 — не длиннее 1/48 (правило 180° для 24 кадров), 180 — не длиннее 1/180: меньше смаза, но темнее в сумерках.":"The camera won’t use a shutter longer than 1/x s. E.g. 48 — no longer than 1/48 (the 180° rule at 24 fps), 180 — no longer than 1/180: less blur, but darker at dusk.",
+"1/x с, 24–8000":"1/x s, 24–8000",
+"Самая короткая выдержка":"Shortest shutter",
+"Камера не будет ставить выдержку короче 1/x с — движение выглядит плавнее, но на ярком солнце нужен ND-фильтр.":"The camera won’t use a shutter shorter than 1/x s — motion looks smoother, but bright sun needs an ND filter."
 };
