@@ -149,6 +149,12 @@ section.view{display:flex;flex-direction:column;gap:14px}
 .lines .txt b{font-weight:600}
 .lines .txt small{display:block;color:var(--muted);font-size:12px}
 .lines .raw{font-family:var(--f-mono);font-size:11.5px;color:var(--muted);word-break:break-all}
+.lines.tappable li{cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent;transition:opacity .15s}
+.lines.tappable li:active{transform:scale(.99)}
+.lines li.changed{outline:1.5px dashed var(--muted);outline-offset:-1.5px}
+.lines li.skipped{opacity:.45}
+.lines li.skipped .txt b{text-decoration:line-through}
+.lines .flip{margin-left:auto;align-self:center;font-size:12px;color:var(--muted);white-space:nowrap}
 
 .codebox{font-family:var(--f-mono);font-size:12.5px;background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:10px;word-break:break-all;user-select:all}
 textarea.codein{width:100%;min-height:90px;font-family:var(--f-mono);font-size:13px;background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:10px;resize:vertical}
@@ -318,8 +324,9 @@ textarea.codein{width:100%;min-height:90px;font-family:var(--f-mono);font-size:1
       <button class="btn primary" id="sheetApplied">Я отсканировал — записать в журнал</button>
     </div>
     <div class="panel">
-      <span class="label">Что сделает код</span>
-      <ul class="lines" id="sheetLines"></ul>
+      <div class="row" style="justify-content:space-between;margin:0"><span class="label" style="margin:0">Что сделает код</span><button class="btn" id="sheetReset" hidden style="padding:4px 10px;font-size:13px">Вернуть как было</button></div>
+      <p class="note" style="margin:6px 0 8px">Нажмите на строку, чтобы выключить её (или убрать из кода). Ещё раз — вернуть. QR обновится сразу.</p>
+      <ul class="lines tappable" id="sheetLines"></ul>
     </div>
     <div class="panel">
       <span class="label">Текст кода</span>
@@ -694,9 +701,26 @@ function qrSvg(text){
 }
 
 // ---------- Sheet ----------
-let sheetCode='', sheetLive=null, sheetSrc=null;
+let sheetCode='', sheetLive=null, sheetSrc=null, sheetBase='', sheetOv={};
+// Tap-to-toggle: each line of the code can be flipped (on<->off) or skipped (left out of the code)
+function canFlip(t){ return t.k==='ext' && t.code!=='FEAT' && t.code!=='SPED'; }
+function onValue(t){ const o=EXT[t.code]; if(!o || o.ctl.t==='txt') return null; return o.ctl.t==='tog'?'1':String(o.ctl.def); }
+function effTok(t, ov){
+  if(!ov) return {raw:t.raw, tok:t};
+  if(ov==='skip') return {raw:'', tok:t, skip:true};
+  const isOff = t.val==='0' || t.val==='';
+  let raw;
+  if(!isOff) raw=t.pfx+t.code+'='+(t.quoted?'""':'0');
+  else { const v=onValue(t); if(v==null) return {raw:'', tok:t, skip:true}; raw=t.pfx+t.code+'='+v; }
+  return {raw, tok:tokenize(raw)[0]};
+}
+function sheetEffective(code){
+  const toks=tokenize(code);
+  const eff=toks.map((t,i)=>effTok(t, sheetOv[i]));
+  return {toks, eff, code: eff.map(e=>e.raw).join('')};
+}
 function openSheet(code, {title='QR-код', live=null, saveName='', src=null}={}){
-  sheetLive=live; sheetSrc=src;
+  sheetLive=live; sheetSrc=src; sheetOv={};
   $('#sheetTitle').textContent=title;
   $('#saveName').value=saveName;
   $('#savePanel').hidden = false;
@@ -705,14 +729,35 @@ function openSheet(code, {title='QR-код', live=null, saveName='', src=null}={
   clearInterval(openSheet.t);
   if(live) openSheet.t=setInterval(()=>drawSheet(live()),1000);
 }
-function drawSheet(code){
+function drawSheet(base){
+  sheetBase=base;
+  const S=sheetEffective(base); const code=S.code;
   sheetCode=code;
   const box=$('#qrBox'); box.replaceChildren();
   const r=qrSvg(code);
   if(r){ box.append(r.svg); $('#qrMeta').textContent=plural(code.length,'символ','символа','символов')+(sheetLive?' · время обновляется каждую секунду':''); }
   else { box.append(h('div',{style:'color:#000;padding:20px;text-align:center',text:typeof qrcode!=='function'?'Библиотека QR не загрузилась. Проверьте интернет и откройте страницу заново.':'Код слишком длинный для одного QR. Уберите часть функций.'})); $('#qrMeta').textContent=''; }
   $('#sheetCode').textContent=code;
-  renderLines($('#sheetLines'), code);
+  renderSheetLines(S);
+  $('#sheetReset').hidden = !Object.keys(sheetOv).length;
+}
+function renderSheetLines(S){
+  const ul=$('#sheetLines'); ul.replaceChildren();
+  if(!S.toks.length){ ul.append(h('li',{},h('span',{class:'txt',text:'Пустой код'}))); return; }
+  S.toks.forEach((t,i)=>{
+    const e=S.eff[i]; const d=describe(e.tok); const ch=!!sheetOv[i];
+    const hint = e.skip ? 'вернуть' : (canFlip(t) && (onValue(t)!=null || !(t.val==='0'||t.val==='')) ? (d.tag==='off'?'включить':'выключить') : 'убрать');
+    ul.append(h('li',{class:(ch?'changed ':'')+(e.skip?'skipped':''), role:'button', tabindex:'0', 'aria-pressed':String(ch),
+      onclick:()=>toggleLine(i, t), onkeydown:ev=>{ if(ev.key==='Enter'||ev.key===' '){ ev.preventDefault(); toggleLine(i,t); } }},
+      h('span',{class:'tag '+(e.skip?'unk':d.tag),text:e.skip?'УБРАНО':d.tagText}),
+      h('span',{class:'txt'}, h('b',{text:d.title}), d.sub?h('small',{text:e.skip?'не войдёт в код':d.sub}):null, h('span',{class:'raw',text:e.skip?t.raw:e.raw})),
+      h('span',{class:'flip',text:hint})));
+  });
+}
+function toggleLine(i, t){
+  if(sheetOv[i]) delete sheetOv[i];
+  else { const isOff=t.val==='0'||t.val===''; sheetOv[i] = (canFlip(t) && (!isOff || onValue(t)!=null)) ? 'flip' : 'skip'; }
+  drawSheet(sheetLive ? sheetLive() : sheetBase);
 }
 function closeSheet(){ $('#sheet').hidden=true; document.body.style.overflow=''; clearInterval(openSheet.t); sheetLive=null; }
 
@@ -954,6 +999,7 @@ $('#search').addEventListener('input',renderOpts);
 $('#cartClear').onclick=()=>{ sel={}; extraRaw=''; renderBuilder(); };
 $('#cartGo').onclick=()=>{ const live= sel.clock ? ()=>buildCode() : null; openSheet(buildCode(),{title:'Ваш QR-код',live}); };
 $('#sheetClose').onclick=closeSheet;
+$('#sheetReset').onclick=()=>{ sheetOv={}; drawSheet(sheetLive ? sheetLive() : sheetBase); };
 document.addEventListener('keydown',e=>{ if(e.key==='Escape' && !$('#sheet').hidden) closeSheet(); });
 $('#sheetApplied').onclick=()=>{ applyToJournal(sheetCode); closeSheet(); };
 $('#sheetEdit').onclick=()=>loadIntoBuilder(sheetCode);
