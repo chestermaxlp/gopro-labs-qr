@@ -280,17 +280,19 @@ textarea.codein{width:100%;min-height:90px;font-family:var(--f-mono);font-size:1
       </label>
       <input type="file" id="qrFile" accept="image/*" hidden>
       <div class="note" id="scanMsg">Подойдёт скриншот, фото с экрана компьютера или из галереи.</div>
+      <div class="note">Сюда же можно вставить отчёт камеры после кода «что включено» ($FEAT), например: <span class="mono">features activated: BITR=180, WIDE, LEVL=3</span> — пульт перенесёт его в «Включено».</div>
       <span class="label">или вставьте текст кода</span>
       <textarea class="codein" id="codeIn" placeholder="например: mVr4p60*BITR=150*LEVL=5oV0"></textarea>
       <div class="row"><button class="btn" id="btnDecode">Расшифровать</button><button class="btn ghost" id="btnSample">Пример</button></div>
     </div>
     <div class="panel" id="decodeOut" hidden>
-      <h2>Что делает этот код</h2>
+      <h2 id="decodeTitle">Что делает этот код</h2>
       <ul class="lines" id="decodeLines"></ul>
       <div class="row">
         <button class="btn primary" id="decToQR">Показать QR</button>
         <button class="btn" id="decToBuild">Открыть в сборщике</button>
         <button class="btn" id="decApplied">Я это отсканировал</button>
+        <button class="btn primary" id="decFeat" hidden>Записать в «Включено»</button>
       </div>
     </div>
   </section>
@@ -909,7 +911,7 @@ function renderState(){
     keys.sort((a,b)=>J.ext[b].t-J.ext[a].t).forEach(k=>{
       const e=J.ext[k]; const o=EXT[k];
       const cb=h('input',{type:'checkbox',id:'off-'+k,'aria-label':T('Выключить ')+(o?o.title:k)}); checks[k]=cb;
-      const vl=o?valueLabel(o,e.v):e.v;
+      const vl=e.v==='' ? T('значение неизвестно') : (o?valueLabel(o,e.v):e.v);
       box.append(h('label',{class:'item',for:'off-'+k}, cb,
         h('div',{class:'grow'}, h('b',{text:o?o.title:(EXTRA_NAMES[k]||k)}), h('small',{text:[vl,k,fmtTime(e.t)].filter(Boolean).join(' · ')})),
         h('span',{class:'pill '+(e.perm?'perm':'temp'),text:e.perm?T('навсегда'):T('до выкл.')})));
@@ -918,7 +920,7 @@ function renderState(){
     acts.append(
       h('button',{class:'btn danger',onclick:()=>{ const pick=keys.filter(k=>checks[k].checked); if(!pick.length){toast(T('Отметьте галочками, что выключить'));return;} openSheet(offCode(pick),{title:T('Выключить выбранное')}); }},T('QR: выключить отмеченное')),
       h('button',{class:'btn',onclick:()=>openSheet(offCode(keys),{title:T('Выключить всё из журнала'),saveName:T('Вернуть как было')})},T('QR: выключить всё это')),
-      h('button',{class:'btn',onclick:()=>{ sel={}; extraRaw=''; keys.forEach(k=>{ if(EXT[k]) sel[k]={m:'on',v:EXT[k].ctl.t==='tog'?'1':J.ext[k].v}; }); go('build'); curCat='picked'; renderCats(); renderBuilder(); }},T('Изменить в сборщике'))
+      h('button',{class:'btn',onclick:()=>{ sel={}; extraRaw=''; keys.forEach(k=>{ if(EXT[k]) sel[k]={m:'on',v:EXT[k].ctl.t==='tog'?'1':(J.ext[k].v||String(EXT[k].ctl.def))}; }); go('build'); curCat='picked'; renderCats(); renderBuilder(); }},T('Изменить в сборщике'))
     );
     if(keys.some(k=>!J.ext[k].perm)) acts.append(h('button',{class:'btn ghost',onclick:()=>{ keys.forEach(k=>{ if(!J.ext[k].perm) delete J.ext[k]; }); store.save(); renderAll(); toast(T('Временные функции убраны из журнала')); }},T('Я выключал камеру')));
   }
@@ -970,11 +972,46 @@ function loadIntoBuilder(code){
 }
 
 // ---------- Decode ----------
+// Camera report shown by $FEAT, e.g. "features activated: Bitr=180, wide, LOGB=400, EXPS, HSTP=1,83,67"
+function parseFeat(text){
+  let t=String(text||'').replace(/[“”„"]/g,'').replace(/\s+/g,' ').trim();
+  const hasHead=/features?\s*activ\w*\s*:?/i.test(t);
+  t=t.replace(/^.*?features?\s*activ\w*\s*:?/i,'').trim();
+  const parts=t.split(/\s*[,;]\s*/).filter(Boolean);
+  const out=[];
+  for(const p of parts){
+    const m=p.match(/^([A-Za-z0-9]{4})(?:\s*=\s*(\S*))?$/);
+    if(m){ out.push({code:m[1].toUpperCase(), val:m[2]===undefined?null:m[2]}); continue; }
+    if(/^-?[0-9.]+$/.test(p) && out.length && out[out.length-1].val!=null){ out[out.length-1].val+=','+p; continue; }
+    if(hasHead) continue; return null;
+  }
+  if(!out.length || (!hasHead && out.length<2)) return null;
+  return out.filter(f=>f.code!=='FEAT');
+}
+let decodedFeat=null;
+function featName(c){ return EXT[c] ? EXT[c].title : (EXTRA_NAMES[c] || T('Labs-функция ')+c); }
 function doDecode(){
   const code=$('#codeIn').value.trim();
   if(!code){ toast(T('Вставьте текст кода или выберите картинку')); return; }
   $('#decodeOut').hidden=false;
-  renderLines($('#decodeLines'), code);
+  decodedFeat=parseFeat(code);
+  ['decToQR','decToBuild','decApplied'].forEach(id=>$('#'+id).hidden=!!decodedFeat);
+  $('#decFeat').hidden=!decodedFeat;
+  $('#decodeTitle').textContent = decodedFeat ? T('Отчёт камеры: включено навсегда') : T('Что делает этот код');
+  if(!decodedFeat){ renderLines($('#decodeLines'), code); return; }
+  const ul=$('#decodeLines'); ul.replaceChildren();
+  decodedFeat.forEach(f=>{
+    const o=EXT[f.code]; const sub = f.val==null ? (o&&o.ctl.t==='tog' ? '' : T('значение камера не показала')) : (o?valueLabel(o,f.val):f.val);
+    ul.append(h('li',{}, h('span',{class:'tag on',text:T('ВКЛ')}),
+      h('span',{class:'txt'}, h('b',{text:featName(f.code)}), h('small',{text:sub}), h('span',{class:'raw',text:f.code+(f.val!=null?'='+f.val:'')}))));
+  });
+}
+function importFeat(list){
+  const J=store.data, now=Date.now();
+  Object.keys(J.ext).forEach(k=>{ if(J.ext[k].perm) delete J.ext[k]; });
+  list.forEach(f=>{ const o=EXT[f.code]; J.ext[f.code]={v: f.val!=null ? f.val : (o&&o.ctl.t==='tog'?'1':''), perm:true, t:now}; });
+  store.save(); renderAll(); go('state');
+  toast(T('Журнал обновлён по отчёту камеры'));
 }
 $('#qrFile').addEventListener('change', e=>{
   const f=e.target.files[0]; if(!f) return;
@@ -1002,6 +1039,7 @@ $('#btnDecode').onclick=doDecode;
 $('#btnSample').onclick=()=>{ $('#codeIn').value='mVr4p60*BITR=150*LEVL=5$HIST=1oV0oD0!S!60E'; doDecode(); };
 $('#decToQR').onclick=()=>{ const c=$('#codeIn').value.trim(); if(c) openSheet(c,{title:T('Код из расшифровки')}); };
 $('#decToBuild').onclick=()=>{ const c=$('#codeIn').value.trim(); if(c) loadIntoBuilder(c); };
+$('#decFeat').onclick=()=>{ if(decodedFeat) importFeat(decodedFeat); };
 $('#decApplied').onclick=()=>{ const c=$('#codeIn').value.trim(); if(c) applyToJournal(c); };
 
 // ---------- Tabs ----------

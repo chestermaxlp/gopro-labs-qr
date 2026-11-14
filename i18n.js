@@ -432,5 +432,12 @@ window.LABS_EN = {
 "Камера не будет ставить выдержку длиннее 1/x с. Например, 48 — не длиннее 1/48 (правило 180° для 24 кадров), 180 — не длиннее 1/180: меньше смаза, но темнее в сумерках.":"The camera won’t use a shutter longer than 1/x s. E.g. 48 — no longer than 1/48 (the 180° rule at 24 fps), 180 — no longer than 1/180: less blur, but darker at dusk.",
 "1/x с, 24–8000":"1/x s, 24–8000",
 "Самая короткая выдержка":"Shortest shutter",
-"Камера не будет ставить выдержку короче 1/x с — движение выглядит плавнее, но на ярком солнце нужен ND-фильтр.":"The camera won’t use a shutter shorter than 1/x s — motion looks smoother, but bright sun needs an ND filter."
+"Камера не будет ставить выдержку короче 1/x с — движение выглядит плавнее, но на ярком солнце нужен ND-фильтр.":"The camera won’t use a shutter shorter than 1/x s — motion looks smoother, but bright sun needs an ND filter.",
+"Записать в «Включено»":"Save to “Enabled”",
+"Сюда же можно вставить отчёт камеры после кода «что включено» ($FEAT), например:":"You can also paste the camera report shown by the “what’s enabled” code ($FEAT), e.g.:",
+"— пульт перенесёт его в «Включено».":"— the remote will move it into “Enabled”.",
+"Отчёт камеры: включено навсегда":"Camera report: permanently enabled",
+"значение камера не показала":"value not shown by the camera",
+"Журнал обновлён по отчёту камеры":"Log updated from the camera report",
+"значение неизвестно":"value unknown"
 };
