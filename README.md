@@ -27,4 +27,21 @@
 
 Чтобы запустить локально, выполните `python -m http.server` в этой папке.
 
+Интерфейс на русском и английском: кнопка в правом верхнем углу. Английские строки лежат в `i18n.js`.
+
 Неофициальный проект, с GoPro никак не связан.
+
+---
+
+## English
+
+**Labs QR Remote** — build and decode QR codes for GoPro cameras running [GoPro Labs](https://gopro.github.io/labs/) firmware (tested against HERO11 Black). Open **https://chestermaxlp.github.io/gopro-labs-qr/** and switch the language with the button in the top-right corner.
+
+- **Build** — pick features to turn on or off and get one combined QR code. Tap any line under the QR to flip it on/off or leave it out.
+- **Enabled** — a log of what you applied, plus codes to turn off selected features or everything.
+- **Sets** — save your own combinations (e.g. "Vlog", "Back to normal").
+- **Decode** — a photo or the text of any Labs QR code, explained command by command.
+
+Data stays on your device only (browser storage); use **Sets → Backup** to move it. On iPhone: open in Safari → Share → Add to Home Screen; it works offline after the first launch.
+
+Static site, no build step. Unofficial project, not affiliated with GoPro.
