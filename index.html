@@ -973,19 +973,33 @@ function loadIntoBuilder(code){
 
 // ---------- Decode ----------
 // Camera report shown by $FEAT, e.g. "features activated: Bitr=180, wide, LOGB=400, EXPS, HSTP=1,83,67"
+const KNOWN_CODE = c => !!(EXT[c] || EXTRA_NAMES[c] || c==='FEAT');
+// Phone text recognition often reads I as 1, O as 0, S as 5, B as 8 — fix only codes we don't know as-is
+function fixCode(c){
+  if(KNOWN_CODE(c)) return c;
+  const alt={'1':'I','0':'O','5':'S','8':'B','I':'1','O':'0','S':'5','B':'8'};
+  let best=null;
+  for(let m=1;m<16;m++){ let t=''; for(let i=0;i<4;i++){ const ch=c[i]; t+= (m>>i&1) && alt[ch] ? alt[ch] : ch; } if(KNOWN_CODE(t)){ best=t; break; } }
+  return best||c;
+}
 function parseFeat(text){
-  let t=String(text||'').replace(/[“”„"]/g,'').replace(/\s+/g,' ').trim();
+  let t=String(text||'').replace(/[“”„"«»]/g,'');
   const hasHead=/features?\s*activ\w*\s*:?/i.test(t);
-  t=t.replace(/^.*?features?\s*activ\w*\s*:?/i,'').trim();
-  const parts=t.split(/\s*[,;]\s*/).filter(Boolean);
+  t=t.replace(/^[\s\S]*?features?\s*activ\w*\s*:?/i,'');
+  t=t.toUpperCase().replace(/\s*=\s*/g,'=');
+  t=t.replace(/(^|[\s,;])([A-Z0-9]{4})-(?=[A-Z][A-Z0-9]{3}(?![A-Z0-9]))/g,'$1$2,');   // NR01-EXPX → NR01, EXPX
+  t=t.replace(/(^|[\s,;])([A-Z0-9]{4})-(?=\d)/g,'$1$2=');                                // EXPX-100 → EXPX=100
+  t=t.replace(/(^|[\s,;])([A-Z0-9]{4})-(?=[A-Z][A-Z0-9]{3}(?![A-Z0-9]))/g,'$1$2,');
+  const parts=t.split(/[\s,;]+/).filter(Boolean);
   const out=[];
   for(const p of parts){
-    const m=p.match(/^([A-Za-z0-9]{4})(?:\s*=\s*(\S*))?$/);
-    if(m){ out.push({code:m[1].toUpperCase(), val:m[2]===undefined?null:m[2]}); continue; }
+    const m=p.match(/^([A-Z0-9]{4})(?:=(\S*))?$/);
+    if(m){ out.push({code:fixCode(m[1]), val:m[2]===undefined||m[2]===''?null:m[2]}); continue; }
     if(/^-?[0-9.]+$/.test(p) && out.length && out[out.length-1].val!=null){ out[out.length-1].val+=','+p; continue; }
     if(hasHead) continue; return null;
   }
-  if(!out.length || (!hasHead && out.length<2)) return null;
+  if(!out.length) return null;
+  if(!hasHead && !out.every(f=>KNOWN_CODE(f.code))) return null;
   return out.filter(f=>f.code!=='FEAT');
 }
 let decodedFeat=null;
