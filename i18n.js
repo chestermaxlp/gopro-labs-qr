@@ -439,5 +439,6 @@ window.LABS_EN = {
 "Отчёт камеры: включено навсегда":"Camera report: permanently enabled",
 "значение камера не показала":"value not shown by the camera",
 "Журнал обновлён по отчёту камеры":"Log updated from the camera report",
-"значение неизвестно":"value unknown"
+"значение неизвестно":"value unknown",
+"HERO11 · прошивка GoPro Labs ·":"HERO11 \u00b7 GoPro Labs firmware \u00b7"
 };
